@@ -130,6 +130,10 @@ then
 	set EXIT_ON_END no
 	set MAV_TYPE none
 	set LOAD_DAPPS yes
+	set HCF no
+	set HCF_QU4D no
+	set HCF_VICON no
+	set GIMBAL no
 	set GPS yes
 	set GPS_FAKE no
 	set FAILSAFE none
@@ -551,6 +555,15 @@ then
 	sh /etc/init.d/rc.logging
 
 	#
+	# Gimbal
+	#
+	if [ $GIMBAL == yes ]
+	then
+		echo "[init] Start Gimbal"
+		gimbal start
+	fi
+
+	#
 	# Start up ARDrone Motor interface
 	#
 	if [ $OUTPUT_MODE == ardrone ]
@@ -616,6 +629,10 @@ then
 			then
 				set MAV_TYPE 2
 			fi
+			if [ $MIXER == quad_w -o $MIXER == quad_w_hcf.mix ]
+			then
+				set MAV_TYPE 2
+			fi
 			if [ $MIXER == tri_y_yaw- -o $MIXER == tri_y_yaw+ ]
 			then
 				set MAV_TYPE 15
@@ -655,6 +672,48 @@ then
 		then
 			sh /etc/init.d/rc.mc_apps
 		fi
+		
+		# start HCF MC apps
+		if [ $HCF == yes ]
+		then
+			sh /etc/init.d/rc.hcf_mc_apps
+		fi
+	fi
+	
+	#
+	# HCF IMU mode
+	#
+	if [ $VEHICLE_TYPE == hcf_imu ]
+	then
+		sh /etc/init.d/rc.hcf_imu_apps
+	fi
+
+	#
+	# HCF Headtracker mode
+	#
+	if [ $VEHICLE_TYPE == hcf_headtracker ]
+	then
+		sh /etc/init.d/rc.hcf_headtracker_apps
+	fi
+
+	#
+	# HCF input mode
+	#
+	if [ $VEHICLE_TYPE == hcf_bodytracker ]
+	then
+		sh /etc/init.d/rc.hcf_bodytracker_apps
+	fi
+
+	if [ $HCF_VICON == yes ]
+	then
+		echo "[hcf] start vicon mavlink"
+		mavlink start -m custom -d /dev/ttyS3 -b 115200 -f
+	fi
+
+	if [ $HCF_QU4D == yes ]
+	then
+		echo "[hcf] QU4D: start extra mavlink"
+		mavlink start -m custom -d /dev/ttyS2 -b 115200
 	fi
 
 	#

@@ -1,0 +1,21 @@
+#!nsh
+#
+# @name HCF head tracker
+#
+# @type AR drone
+#
+# @maintainer Stefan Stevsic <stewdza@gmail.com>
+# IMU mode for tests
+#
+echo "[init] 20003_hcf_headtracker"
+set USE_IO no
+set MIXER skip
+set HCF yes
+set HCF_VICON no
+set VEHICLE_TYPE hcf_headtracker
+
+# higher baudrate for lairdtech on serial 1
+set MAVLINK_FLAGS "-r 1000 -d /dev/ttyS0 -b 115200"
+
+# set EXIT_ON_END because we set a custom MAVLINK_FLAGS
+set EXIT_ON_END yes

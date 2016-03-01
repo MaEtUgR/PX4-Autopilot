@@ -1,0 +1,46 @@
+#!nsh
+#
+# @name HCF solo drone
+#
+# @type Quadrotor x
+#
+# @maintainer Stefan Stevsic <stewdza@gmail.com>
+# Solo
+
+echo "[init] 20006_hcf_quad_solo for HCF"
+
+sh /etc/init.d/rc.mc_defaults
+
+set MIXER quad_x_with_mini_3d_gimbal
+
+set PWM_OUT 1234
+
+if [ $AUTOCNF == yes ]
+then
+	param set MC_ROLL_P 7.0
+	param set MC_ROLLRATE_P 0.15
+	param set MC_ROLLRATE_I 0.05
+	param set MC_ROLLRATE_D 0.003
+	param set MC_PITCH_P 7.0
+	param set MC_PITCHRATE_P 0.15
+	param set MC_PITCHRATE_I 0.05
+	param set MC_PITCHRATE_D 0.003
+	param set MC_YAW_P 2.8
+	param set MC_YAWRATE_P 0.2
+	param set MC_YAWRATE_I 0.1
+	param set MC_YAWRATE_D 0.0
+	# DJI ESCs do not support calibration and need a higher min
+	param set PWM_MIN 1075
+fi
+
+set MIXER_AUX none
+
+set MAVLINK_F "-r 1200 -d /dev/ttyS0"
+
+set LOAD_DAPPS no
+set HCF yes
+set HCF_VICON no
+set GPS no
+
+# set EXIT_ON_END because we set a custom MAVLINK_FLAGS
+set EXIT_ON_END yes

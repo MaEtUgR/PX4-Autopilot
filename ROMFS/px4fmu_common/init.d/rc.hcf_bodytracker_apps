@@ -1,0 +1,8 @@
+echo "[hcf] start bodytracker apps"
+attitude_estimator_ekf start
+position_estimator_inav start
+body_tracker start
+
+# more data output for the normal mavlink
+mavlink stream -d /dev/ttyS0 -s COMMAND_LONG -r 15
+mavlink stream -d /dev/ttyS0 -s GLOBAL_POSITION_INT -r 15

@@ -1,0 +1,20 @@
+echo "[hcf] start MC apps"
+attitude_estimator_ekf start 
+usleep 1000
+
+mc_att_control_hcf start 
+usleep 1000
+
+#mc_pos_control_hcf start
+usleep 10000
+
+#gimbal start
+#usleep 1000
+
+# driver for adafruit i2c to pwm board
+#if pca9685 start
+#then
+#fi
+#usleep 1000
+
+sh /etc/init.d/rc.hcf_comm

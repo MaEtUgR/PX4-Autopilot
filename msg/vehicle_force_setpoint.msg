@@ -6,3 +6,4 @@ float32 x		# in N NED
 float32 y		# in N NED
 float32 z		# in N NED
 float32 yaw		# right-hand rotation around downward axis (rad, equivalent to Tait-Bryan yaw)
+float32 yaw_rate	# right-hand rotation around downward axis (rad, equivalent to Tait-Bryan yaw)

@@ -1,0 +1,20 @@
+#!nsh
+#
+# @name HCF HIL Quadcopter +
+#
+# @type Quadcopter +
+#
+# @maintainer Stefan Stevsic <stewdza@gmail.com>
+# 
+#
+# Anton Babushkin <anton.babushkin@me.com>
+#
+
+sh /etc/init.d/rc.mc_defaults
+
+set MIXER FMU_quad_+
+
+set HIL yes
+
+set LOAD_DAPPS no
+set HCF yes

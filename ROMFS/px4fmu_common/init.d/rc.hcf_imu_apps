@@ -1,0 +1,3 @@
+echo "[hcf] start IMU apps"
+attitude_estimator_ekf start
+sh /etc/init.d/rc.hcf_comm

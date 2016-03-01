@@ -1,0 +1,21 @@
+echo "[hcf] start onboard mavlink"
+#mavlink stop-all
+usleep 10000
+mavlink start -m custom -d /dev/ttyS1 -b 230400
+mavlink stream -d /dev/ttyS1 -s HIGHRES_IMU -r 200
+#mavlink stream -d /dev/ttyS1 -s ATTITUDE_R -r 30
+mavlink stream -d /dev/ttyS1 -s FORCE_SETPOINT -r 30
+mavlink stream -d /dev/ttyS1 -s ATTITUDE -r 100
+if [ $GPS == yes ]
+than
+	mavlink stream -d /dev/ttyS1 -s GPS_RAW_INT -r 20
+fi
+usleep 10000
+
+# more data output for the normal mavlink
+#mavlink stream -d /dev/ttyS0 -s ATTITUDE_TARGET -r 20
+#mavlink stream -d /dev/ttyS0 -s GLOBAL_POSITION_SETPOINT_INT -r 1
+#mavlink stream -d /dev/ttyS0 -s GLOBAL_POSITION_INT -r 5
+# higher rate for the normal mavlink for streams that are already sent in MAVLINK_MODE_NORMAL
+#mavlink stream -d /dev/ttyS0 -s NAMED_VALUE_FLOAT -r 5
+#mavlink stream -d /dev/ttyS0 -s LOCAL_POSITION_NED -r 20

@@ -1,0 +1,50 @@
+#!nsh
+#
+# @name HCF ar drone min max
+#
+# @type AR drone
+#
+# @maintainer Stefan Stevsic <stewdza@gmail.com>
+# ARDrone
+#
+echo "[init] 20002_hcf_ardrone_minimax for HCF minimax scenario"
+
+# Just use the default multicopter settings.
+sh /etc/init.d/rc.mc_defaults
+
+#
+# Load default params for this platform
+#
+if [ $AUTOCNF == yes ]
+then
+    # Set all params here, then disable autoconfig
+    param set MC_ROLL_P 5.0
+    param set MC_ROLLRATE_P 0.13
+    param set MC_ROLLRATE_I 0.0
+    param set MC_ROLLRATE_D 0.0
+    param set MC_PITCH_P 5.0
+    param set MC_PITCHRATE_P 0.13
+    param set MC_PITCHRATE_I 0.0
+    param set MC_PITCHRATE_D 0.0
+    param set MC_YAW_P 1.0
+    param set MC_YAWRATE_P 0.15
+    param set MC_YAWRATE_I 0.0
+    param set MC_YAWRATE_D 0.0
+    param set MC_YAW_FF 0.15
+    param set BAT_V_SCALING 0.00838095238
+fi
+
+set OUTPUT_MODE ardrone
+set USE_IO no
+set MIXER skip
+# set MAV_TYPE because no specific mixer is set
+set MAV_TYPE 2
+
+set GPS no
+set HCF_VICON yes
+
+# higher baudrate for lairdtech on serial 1
+set MAVLINK_FLAGS "-r 1000 -d /dev/ttyS0 -b 115200"
+
+# set EXIT_ON_END because we set a custom MAVLINK_FLAGS
+set EXIT_ON_END yes

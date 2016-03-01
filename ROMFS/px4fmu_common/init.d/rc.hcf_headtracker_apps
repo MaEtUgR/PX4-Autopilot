@@ -1,0 +1,6 @@
+echo "[hcf] start Headtracker apps"
+attitude_estimator_ekf start
+head_tracker start
+
+# more data output for the normal mavlink
+mavlink stream -d /dev/ttyS0 -s COMMAND_LONG -r 15

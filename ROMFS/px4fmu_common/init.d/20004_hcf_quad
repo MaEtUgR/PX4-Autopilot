@@ -1,0 +1,15 @@
+#!nsh
+#
+# @name HCF w quvad
+#
+# @type Quadrotor Wide
+#
+# @maintainer Stefan Stevsic <stewdza@gmail.com>
+# HCF H quad
+#
+
+sh /etc/init.d/10017_steadidrone_qu4d
+
+set MIXER quad_w_hcf
+set GIMBAL yes
+set HCF_QU4D yes

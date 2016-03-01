@@ -1,0 +1,26 @@
+Multirotor mixer for PX4FMU
+===========================
+
+This file defines a single mixer for a quadrotor in the X configuration.  All controls
+are mixed 100%.
+
+R: 4x 10000 10000 10000 0
+
+Gimbal mixer for last four channels using external reference
+-----------------------------------------------------
+
+M: 1
+O:      10000  10000      0 -10000  10000
+S: 3 0  10000  10000      0 -10000  10000
+
+M: 1
+O:      10000  10000      0 -10000  10000
+S: 3 1  10000  10000      0 -10000  10000
+
+M: 1
+O:      10000  10000      0 -10000  10000
+S: 3 2  10000  10000      0 -10000  10000
+
+M: 1
+O:      10000  10000      0 -10000  10000
+S: 3 3  10000  10000      0 -10000  10000
