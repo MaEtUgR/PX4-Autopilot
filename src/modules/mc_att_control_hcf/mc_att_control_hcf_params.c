@@ -127,7 +127,7 @@ PARAM_DEFINE_FLOAT(HA_ATT_YD, 1.0f);
 // * @min 0.0
 // * @group Multicopter Attitude Control
 // */
-PARAM_DEFINE_FLOAT(HA_RATE_P, 0.1f);
+PARAM_DEFINE_FLOAT(HA_RATE_P, 0.03f);
 
 /**
  * Pitch rate D gain
@@ -147,7 +147,7 @@ PARAM_DEFINE_FLOAT(HA_RATE_D, 0.002f);
  * @min 0.0
  * @group Multicopter Attitude Control
  */
-PARAM_DEFINE_FLOAT(HA_RATE_YP, 0.3f);
+PARAM_DEFINE_FLOAT(HA_RATE_YP, 0.15f);
 
 /**
  * Yaw rate D gain
