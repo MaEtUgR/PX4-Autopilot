@@ -47,6 +47,7 @@
 #include "mc_att_control_hcf.h"
 
 #include <px4_config.h>
+#include <px4_posix.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -128,12 +129,12 @@ MulticopterAttitudeControlHcf::update()
 	static int counter = 0;
 
 	/* poll for new data */
-	struct pollfd fds[1];
+	px4_pollfd_struct_t fds[1];
 	fds[0].fd = _att.getHandle();
 	fds[0].events = POLLIN;
 
 	/* wait for up to 500ms for data */
-	int pret = poll(&fds[0], (sizeof(fds) / sizeof(fds[0])), 500);
+	int pret = px4_poll(&fds[0], (sizeof(fds) / sizeof(fds[0])), 500);
 
 	/* timed out - periodic check for _task_should_exit */
 	if (pret == 0) {
