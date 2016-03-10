@@ -194,8 +194,10 @@ MulticopterAttitudeControlHcf::update()
 			_attitudeController.update(_inputLoader.getForceSetpointBodyYaw(),_inputLoader.getSetpointYaw(),_inputLoader.getSetpointYawRate() , att_no_yaw,
 					(!_was_attcontrol || !_was_armed));
 
+			float thrust = _inputLoader.getSetpointYawRate()*1.4f-0.4f;
+			//printf("Rate Input: %.1f %.1f %.1f %.1f\n", (double)_inputLoader.getForceSetpointBodyYaw()(0), (double)_inputLoader.getForceSetpointBodyYaw()(1), (double)_inputLoader.getForceSetpointBodyYaw()(2), (double)thrust);
 			/* Rate control */
-			_rateController.update(_attitudeController.getRatesSp(), _attitudeController.getThrustSp(),
+			_rateController.update(_inputLoader.getForceSetpointBodyYaw()*2, thrust,
 				math::Vector<3>({att_no_yaw.rollspeed, att_no_yaw.pitchspeed, att_no_yaw.yawspeed}));
 
 			// consider using raw giro for rate controller to reduce latency effect!!!! - check in qgroundcontrol

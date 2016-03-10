@@ -783,6 +783,8 @@ MavlinkReceiver::handle_message_set_control_target_local_ned(mavlink_message_t *
 	mavlink_set_control_target_local_ned_t set_control_target_local_ned;
 	mavlink_msg_set_control_target_local_ned_decode(msg, &set_control_target_local_ned);
 
+	//printf("Joystick: %.1f %.1f %.1f %.1f\n", (double)set_control_target_local_ned.x, (double)set_control_target_local_ned.y, (double)set_control_target_local_ned.z, (double)set_control_target_local_ned.yaw);
+
 	struct offboard_control_mode_s offboard_control_mode;
 	memset(&offboard_control_mode, 0, sizeof(offboard_control_mode));//XXX breaks compatibility with multiple setpoints
 

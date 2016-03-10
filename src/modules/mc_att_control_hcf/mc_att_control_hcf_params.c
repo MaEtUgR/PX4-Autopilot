@@ -56,7 +56,7 @@ PARAM_DEFINE_FLOAT(HA_INP_SZ, 0.5f);
 /*
  * Roll P Control Gain
  */
-PARAM_DEFINE_FLOAT(HA_ATT_P, 1.0f);
+PARAM_DEFINE_FLOAT(HA_ATT_P, 8.0f);
 
 /*
  * Roll I Control Gain
@@ -66,7 +66,7 @@ PARAM_DEFINE_FLOAT(HA_ATT_I, 0.0f);
 /*
  *  Roll D Control Gain
  */
-PARAM_DEFINE_FLOAT(HA_ATT_D, 1.0f);
+PARAM_DEFINE_FLOAT(HA_ATT_D, 4.0f);
 
 /*
  * Pitch P Control Gain
@@ -127,7 +127,7 @@ PARAM_DEFINE_FLOAT(HA_ATT_YD, 1.0f);
 // * @min 0.0
 // * @group Multicopter Attitude Control
 // */
-PARAM_DEFINE_FLOAT(HA_RATE_P, 0.03f);
+PARAM_DEFINE_FLOAT(HA_RATE_P, 0.48f);
 
 /**
  * Pitch rate D gain
