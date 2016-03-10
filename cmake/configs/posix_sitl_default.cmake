@@ -42,6 +42,7 @@ set(config_module_list
 	modules/mc_pos_control
 	modules/mc_att_control
 	modules/mc_att_control_hcf
+	modules/mcontrol
 	modules/mc_pos_control_multiplatform
 	modules/mc_att_control_multiplatform
 	modules/land_detector
