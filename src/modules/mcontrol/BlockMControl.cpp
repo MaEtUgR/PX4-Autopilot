@@ -59,6 +59,6 @@ void BlockMControl::rateController() {
 	for (int i = 0; i < 3; i++) {
 		_pub_actuator_controls.get().control[i] = PX4_ISFINITE(_control_output(i)) ? _control_output(i) : 0.0f;
 	}
-	_pub_actuator_controls.get().control[3] = PX4_ISFINITE(thrust_sp) ? thrust_sp : 0.0f;
+	_pub_actuator_controls.get().control[3] = PX4_ISFINITE(thrust_sp) && thrust_sp > 0.1f ? thrust_sp : 0.1f;
 	_pub_actuator_controls.update();
 }
