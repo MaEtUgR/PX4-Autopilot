@@ -7,10 +7,64 @@
 
 #include "BlockMControl.hpp"
 
-extern "C" __EXPORT int mcontrol_main(int argc, char *argv[]);
+extern "C" __EXPORT int mcontrol_main(int argc, char *argv[]);	// deamon management function
+int mcontrol_thread_main(int argc, char *argv[]);				// main loop of deamon
+
+static volatile bool thread_should_exit = false;				// deamon exit flag
+static volatile bool thread_running = false;					// deamon status flag
+static int deamon_task;											// handle of deamon task / thread
 
 int mcontrol_main(int argc, char *argv[]) {
-	printf("APP UP AND RUNNING!!!\n");
-	BlockMControl controller;
+	if (argc < 2) {
+		warnx("usage: mcontrol {start|stop|status}");
+		return 1;
+	}
+
+	if (!strcmp(argv[1], "start")) {
+		if (thread_running) {
+			warnx("already running");
+			return 0; // this is not an error
+		}
+		thread_should_exit = false;
+		deamon_task = px4_task_spawn_cmd("mcontrol", SCHED_DEFAULT,
+				SCHED_PRIORITY_MAX - 5, 10240,
+				mcontrol_thread_main,
+				(argv && argc > 2) ? (char * const *) &argv[2] : (char * const *) NULL);
+		return 0;
+	}
+
+	if (!strcmp(argv[1], "stop")) {
+		if (thread_running) {
+			warnx("stop");
+			thread_should_exit = true;
+		} else {
+			warnx("not started");
+		}
+		return 0;
+	}
+
+	if (!strcmp(argv[1], "status")) {
+		if (thread_running) {
+			warnx("is running");
+		} else {
+			warnx("not started");
+		}
+		return 0;
+	}
+
+	warnx("unrecognized command");
+	return 1;
+}
+
+int mcontrol_thread_main(int argc, char *argv[]) {
+	warnx("starting");
+	BlockMControl Controller;
+	thread_running = true;
+
+	while (!thread_should_exit)
+		Controller.update();
+
+	warnx("exiting");
+	thread_running = false;
 	return 0;
 }
