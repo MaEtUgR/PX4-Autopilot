@@ -28,7 +28,7 @@ void BlockMControl::update() {
 	//printf("dt: % .1fms Gyro: % .1f % .1f % .1f:\n",(double)dt*1e3, (double)_sub_control_state.get().roll_rate, (double)_sub_control_state.get().pitch_rate, (double)_sub_control_state.get().yaw_rate);
 	//printf("Joystick: % .1f % .1f % .1f % .1f\n", (double)_sub_force_setpoint.get().x, (double)_sub_force_setpoint.get().y, (double)_sub_force_setpoint.get().z, (double)_sub_force_setpoint.get().yaw_rate);
 
-	printf("q: ");
+	/*printf("q: ");
 	for(int i = 0; i < 4; i++) {
 		printf("%f ", (double)_sub_control_state.get().q[i]);
 	}
@@ -39,7 +39,7 @@ void BlockMControl::update() {
 		printf("%f ", (double)_sub_vehicle_attitude.get().R[i]);
 		if(i % 3 == 2)
 			printf("\n");
-	}
+	}*/
 
 	Controller();
 	//rateController_original();
@@ -60,10 +60,21 @@ void BlockMControl::calculate_dt() {
 }
 
 void BlockMControl::Controller() {
-	matrix::Vector3<float> rates(_sub_control_state.get().roll_rate, _sub_control_state.get().pitch_rate, _sub_control_state.get().yaw_rate);
-	matrix::Vector3<float> rates_desired(_sub_force_setpoint.get().x, _sub_force_setpoint.get().y, _sub_force_setpoint.get().z);
-	matrix::Vector3<float> rates_error = rates - rates_desired;
-	matrix::Vector3<float> momentum = -0.48f * rates_error;
+	matrix::Vector3f rates(_sub_control_state.get().roll_rate, _sub_control_state.get().pitch_rate, _sub_control_state.get().yaw_rate);
+	matrix::Vector3f rates_desired(_sub_force_setpoint.get().x, _sub_force_setpoint.get().y, _sub_force_setpoint.get().z);
+	matrix::Vector3f rates_error = rates - rates_desired;
+
+	matrix::Matrix3f attitude(_sub_vehicle_attitude.get().R);
+	matrix::Matrix3f attitude_desired = matrix::eye<float, 3>();
+	matrix::Matrix3f attitude_error_M = attitude_desired.T()*attitude - attitude.T()*attitude_desired;
+	matrix::Vector3f attitude_error = 1/2.0f * ((matrix::Matrix3f)(attitude_desired.T()*attitude - attitude.T()*attitude_desired)).UnHat();
+
+	//printf("Attitude:\n"); attitude.print();
+	//printf("Attitude^T:\n"); attitude.T().print();
+	//printf("Attitude_err_M:\n"); attitude_error_M.print();
+	printf("Attitude_err:\n"); attitude_error.print();
+
+	matrix::Vector3<float> momentum = -0.48f * rates_error -3.0f * attitude_error;
 
 	for(int i = 0; i < 3; i++) {
 		_pub_actuator_controls.get().control[i] = PX4_ISFINITE(momentum(i)) ? momentum(i) : 0.0f;

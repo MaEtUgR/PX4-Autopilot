@@ -8,6 +8,7 @@
 #pragma once
 #include <px4_posix.h>
 #include <mathlib/mathlib.h>
+#include <matrix/Matrix3.hpp>
 #include <controllib/uorb/blocks.hpp>
 #include <uORB/topics/control_state.h>
 #include <uORB/topics/vehicle_force_setpoint.h>
