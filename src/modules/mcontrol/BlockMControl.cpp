@@ -10,6 +10,7 @@
 BlockMControl::BlockMControl() :
 		SuperBlock(NULL, "MCONTROL"),
 		_sub_control_state(ORB_ID(control_state), 0, 0, &getSubscriptions()),
+		_sub_vehicle_attitude(ORB_ID(vehicle_attitude), 0, 0, &getSubscriptions()),
 		_sub_force_setpoint(ORB_ID(vehicle_force_setpoint), 0, 0, &getSubscriptions()),
 		_pub_actuator_controls(ORB_ID(actuator_controls_0), -1, &getPublications()),
 		_dt(0),
@@ -27,7 +28,21 @@ void BlockMControl::update() {
 	//printf("dt: % .1fms Gyro: % .1f % .1f % .1f:\n",(double)dt*1e3, (double)_sub_control_state.get().roll_rate, (double)_sub_control_state.get().pitch_rate, (double)_sub_control_state.get().yaw_rate);
 	//printf("Joystick: % .1f % .1f % .1f % .1f\n", (double)_sub_force_setpoint.get().x, (double)_sub_force_setpoint.get().y, (double)_sub_force_setpoint.get().z, (double)_sub_force_setpoint.get().yaw_rate);
 
-	rateController();
+	printf("q: ");
+	for(int i = 0; i < 4; i++) {
+		printf("%f ", (double)_sub_control_state.get().q[i]);
+	}
+	printf("\n");
+
+	printf("R:\n");
+	for(int i = 0; i < 9; i++) {
+		printf("%f ", (double)_sub_vehicle_attitude.get().R[i]);
+		if(i % 3 == 2)
+			printf("\n");
+	}
+
+	Controller();
+	//rateController_original();
 }
 
 bool BlockMControl::poll_control_state() {
@@ -44,7 +59,21 @@ void BlockMControl::calculate_dt() {
 	_dt_timeStamp = newTimeStamp;
 }
 
-void BlockMControl::rateController() {
+void BlockMControl::Controller() {
+	matrix::Vector3<float> rates(_sub_control_state.get().roll_rate, _sub_control_state.get().pitch_rate, _sub_control_state.get().yaw_rate);
+	matrix::Vector3<float> rates_desired(_sub_force_setpoint.get().x, _sub_force_setpoint.get().y, _sub_force_setpoint.get().z);
+	matrix::Vector3<float> rates_error = rates - rates_desired;
+	matrix::Vector3<float> momentum = -0.48f * rates_error;
+
+	for(int i = 0; i < 3; i++) {
+		_pub_actuator_controls.get().control[i] = PX4_ISFINITE(momentum(i)) ? momentum(i) : 0.0f;
+	}
+	float thrust_desired = _sub_force_setpoint.get().yaw_rate*1.4f-0.4f;
+	_pub_actuator_controls.get().control[3] = PX4_ISFINITE(thrust_desired) && thrust_desired > 0.1f ? thrust_desired : 0.1f;
+	_pub_actuator_controls.update();
+}
+
+void BlockMControl::rateController_original() {
 	math::Vector<3> rates = {_sub_control_state.get().roll_rate, _sub_control_state.get().pitch_rate, _sub_control_state.get().yaw_rate};
 	math::Vector<3> rates_sp = {_sub_force_setpoint.get().x, _sub_force_setpoint.get().y, _sub_force_setpoint.get().z};
 	float thrust_sp = _sub_force_setpoint.get().yaw_rate*1.4f-0.4f;
@@ -56,7 +85,7 @@ void BlockMControl::rateController() {
 	math::Vector<3> _control_output = _rate_p.emult(rates_err) + _rate_d.emult(_rates_prev - rates) / _dt;
 	_rates_prev = rates;
 
-	for (int i = 0; i < 3; i++) {
+	for(int i = 0; i < 3; i++) {
 		_pub_actuator_controls.get().control[i] = PX4_ISFINITE(_control_output(i)) ? _control_output(i) : 0.0f;
 	}
 	_pub_actuator_controls.get().control[3] = PX4_ISFINITE(thrust_sp) && thrust_sp > 0.1f ? thrust_sp : 0.1f;

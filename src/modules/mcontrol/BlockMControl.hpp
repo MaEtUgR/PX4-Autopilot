@@ -18,6 +18,7 @@ public:
 	void update();
 private:
 	uORB::Subscription<control_state_s>				_sub_control_state;
+	uORB::Subscription<vehicle_attitude_s>			_sub_vehicle_attitude;
 	uORB::Subscription<vehicle_force_setpoint_s>	_sub_force_setpoint;
 	uORB::Publication<actuator_controls_s>			_pub_actuator_controls;
 
@@ -28,7 +29,8 @@ private:
 	float _dt;
 	uint64_t _dt_timeStamp;											// last time the loop ran to calculate dt
 
-	void rateController();
+	void Controller();
+	void rateController_original();
 
 	math::Vector<3> _rates_prev;
 };
