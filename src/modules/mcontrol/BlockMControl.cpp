@@ -21,6 +21,7 @@ BlockMControl::BlockMControl() :
 	_control_state_Poll.fd = _sub_control_state.getHandle();
 	_control_state_Poll.events = POLLIN;
 	_Rd_prev.setZero();
+	_Od_prev.setZero();
 }
 
 void BlockMControl::update() {
@@ -52,24 +53,31 @@ void BlockMControl::Controller() {
 	Eulerf euler(_sub_force_setpoint.get().x/2, _sub_force_setpoint.get().y/2, _sub_force_setpoint.get().z/2);	// joystick euler attitude set point TODO: better translation through vector
 	Dcmf dcm(euler);
 
-	Matrix3f R(_sub_vehicle_attitude.get().R); 												// R   : attitude			= estimated attitude from uORB topic
-	Matrix3f Rd = dcm;																		// Rd  : desired attitude
-	Vector3f e_R = 1/2.f * ((matrix::Matrix3f)(Rd.T() * R - R.T() * Rd)).V();				// e_R : attitude error		= 1/2 * (Rd' R - R' * Rd)^V
+	Matrix3f R(_sub_vehicle_attitude.get().R); 											// R   : attitude			= estimated attitude from uORB topic
+	Matrix3f Rd = dcm;																	// Rd  : desired attitude
+	Vector3f e_R = 1/2.f * ((matrix::Matrix3f)(Rd.T() * R - R.T() * Rd)).V();			// e_R : attitude error		= 1/2 * (Rd' R - R' * Rd)^V
 
-	Matrix3f Rd_d = (Rd - _Rd_prev) / _dt;													// Rd_d: derivative of desired attitude
+	Matrix3f Rd_d = (Rd - _Rd_prev) / _dt;												// Rd_d: derivative of desired attitude
 	_Rd_prev = Rd;
 
-	Vector3f O(&_sub_control_state.get().roll_rate);										// O   : rate				= gyroscope measurement from uORB topic
-	Vector3f Od = 1/2.0f * ((matrix::Matrix3f)(Rd.T() * Rd_d - Rd_d.T() * Rd)).V();			// Od  : desired rate		= 1/2 * (Rd' Rd_d - Rd_d' * Rd)^V
-	Vector3f e_O = O - R.T() * Rd * Od;														// e_O : rate error
+	Vector3f O(&_sub_control_state.get().roll_rate);									// O   : rate				= gyroscope measurement from uORB topic
+	Vector3f Od = 1/2.0f * ((matrix::Matrix3f)(Rd.T() * Rd_d - Rd_d.T() * Rd)).V();		// Od  : desired rate		= 1/2 * (Rd' Rd_d - Rd_d' * Rd)^V
+	Vector3f e_O = O - R.T() * Rd * Od;													// e_O : rate error
 
-	//printf("Attitude:\n"); R.print();
-	//printf("Rate_err:\n"); e_O.print();
-	//printf("Attitude_err:\n"); e_R.print();
-	//printf("attitude derivative:\n"); (attitude_desired.T() * attitude_desired_d - attitude_desired_d.T() * attitude_desired).print();
-	printf("rate feed_forward:\n"); Od.print();
+	Matrix3f J = diag(Vector3f({0.0347563, 0.0458929, 0.0977}));
+	Vector3f e_C = O % (J * O);															// e_C : coriolis error because O being in body frame TODO: centripetal important?? http://sal.aalto.fi/publications/pdf-files/eluu11_public.pdf p. 5
 
-	Vector3f m = -0.60f * e_O -5.0f * e_R;																// m   : angular moment to apply to quad
+	Vector3f Od_d = (Od - _Od_prev) / _dt;												// Od_d: derivative of desired rate
+	_Od_prev = Od;
+
+	Vector3f e_M = J * (O.Hat()*R.T()*Rd*Od - R.T()*Rd*Od_d);							// e_M : Model feed forward	= J * (O^^*R'*Rd*Od - R'*Rd*Od_d)
+
+	printf("e_R\n"); e_R.print();
+	printf("e_O\n"); e_O.print();
+	printf("e_C\n"); e_C.print();
+	printf("e_M\n"); e_M.print();
+
+	Vector3f m = -0.60f * e_O -5.0f * e_R + e_C; //- e_M;									// m   : angular moment to apply to quad
 
 	float thrust_desired = _sub_force_setpoint.get().yaw_rate*1.4f-0.4f;
 	publishMoment(thrust_desired, m);
@@ -94,6 +102,6 @@ void BlockMControl::publishMoment(float thrust, matrix::Vector3f moment) {
 	for(int i = 0; i < 3; i++) {
 		_pub_actuator_controls.get().control[i] = PX4_ISFINITE(moment(i)) ? moment(i) : 0.0f;
 	}
-	_pub_actuator_controls.get().control[3] = PX4_ISFINITE(thrust) && thrust > 0.1f ? thrust : 0.1f;
+	_pub_actuator_controls.get().control[3] = PX4_ISFINITE(thrust) && thrust > 0.2f ? thrust : 0.2f;
 	_pub_actuator_controls.update();
 }

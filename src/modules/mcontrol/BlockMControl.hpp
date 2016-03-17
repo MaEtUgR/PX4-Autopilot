@@ -32,6 +32,7 @@ private:
 
 	void Controller();
 	matrix::Matrix3f _Rd_prev;
+	matrix::Vector3f _Od_prev;
 
 	void rateController_original();
 	math::Vector<3> _rates_prev;
