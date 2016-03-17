@@ -31,7 +31,10 @@ private:
 	uint64_t _dt_timeStamp;											// last time the loop ran to calculate dt
 
 	void Controller();
-	void rateController_original();
+	matrix::Matrix3f _Rd_prev;
 
+	void rateController_original();
 	math::Vector<3> _rates_prev;
+
+	void publishMoment(float thrust, matrix::Vector3f moment);
 };
