@@ -50,7 +50,7 @@ void BlockMControl::calculate_dt() {
 }
 
 void BlockMControl::Controller() {
-	Eulerf euler(_sub_force_setpoint.get().x/2, _sub_force_setpoint.get().y/2, _sub_force_setpoint.get().z/2);	// joystick euler attitude set point TODO: better translation through vector
+	Eulerf euler(_sub_force_setpoint.get().x/1.5f, _sub_force_setpoint.get().y/1.5f, _sub_force_setpoint.get().z/1.5f);	// joystick euler attitude set point TODO: better translation through vector
 	Dcmf dcm(euler);
 
 	Matrix3f R(_sub_vehicle_attitude.get().R); 											// R   : attitude			= estimated attitude from uORB topic
@@ -62,7 +62,7 @@ void BlockMControl::Controller() {
 
 	Vector3f O(&_sub_control_state.get().roll_rate);									// O   : rate				= gyroscope measurement from uORB topic
 	Vector3f Od = 1/2.0f * ((matrix::Matrix3f)(Rd.T() * Rd_d - Rd_d.T() * Rd)).V();		// Od  : desired rate		= 1/2 * (Rd' Rd_d - Rd_d' * Rd)^V
-	Vector3f e_O = O - R.T() * Rd * Od;													// e_O : rate error
+	Vector3f e_O = O;// - R.T() * Rd * Od;													// e_O : rate error
 
 	Matrix3f J = diag(Vector3f({0.0347563, 0.0458929, 0.0977}));
 	Vector3f e_C = O % (J * O);															// e_C : coriolis error because O being in body frame TODO: centripetal important?? http://sal.aalto.fi/publications/pdf-files/eluu11_public.pdf p. 5
@@ -70,16 +70,19 @@ void BlockMControl::Controller() {
 	Vector3f Od_d = (Od - _Od_prev) / _dt;												// Od_d: derivative of desired rate
 	_Od_prev = Od;
 
-	Vector3f e_M = J * (O.Hat()*R.T()*Rd*Od - R.T()*Rd*Od_d);							// e_M : Model feed forward	= J * (O^^*R'*Rd*Od - R'*Rd*Od_d)
+	Vector3f e_M = J * (O.Hat()*R.T()*Rd*Od /*- R.T()*Rd*Od_d*/);							// e_M : Model feed forward	= J * (O^^*R'*Rd*Od - R'*Rd*Od_d)
 
-	printf("e_R\n"); e_R.print();
-	printf("e_O\n"); e_O.print();
-	printf("e_C\n"); e_C.print();
-	printf("e_M\n"); e_M.print();
+	//printf("e_R\n"); e_R.print();
+	//printf("e_O\n"); e_O.print();
+	//printf("e_C\n"); e_C.print();
+	//printf("e_M\n"); e_M.print();
 
-	Vector3f m = -0.60f * e_O -5.0f * e_R + e_C; //- e_M;									// m   : angular moment to apply to quad
+	Vector3f m = -0.60f * e_O -3.0f * e_R; //+ e_C; //- e_M;									// m   : angular moment to apply to quad
+	//m = m.emult(Vector3f(1,1,2));															// draft for using different gains depending on roll, pitch or yaw
 
-	float thrust_desired = _sub_force_setpoint.get().yaw_rate*1.4f-0.4f;
+	float thrust_desired = (_sub_force_setpoint.get().yaw_rate-0.5f)*2;//*1.4f-0.4f;
+	thrust_desired = thrust_desired > 0 ? thrust_desired : 0;
+	//printf("thrust_desired: %f\n",(double)thrust_desired);
 	publishMoment(thrust_desired, m);
 }
 
@@ -102,6 +105,6 @@ void BlockMControl::publishMoment(float thrust, matrix::Vector3f moment) {
 	for(int i = 0; i < 3; i++) {
 		_pub_actuator_controls.get().control[i] = PX4_ISFINITE(moment(i)) ? moment(i) : 0.0f;
 	}
-	_pub_actuator_controls.get().control[3] = PX4_ISFINITE(thrust) && thrust > 0.2f ? thrust : 0.2f;
+	_pub_actuator_controls.get().control[3] = PX4_ISFINITE(thrust) && thrust > 0.0f ? thrust : 0.0f;
 	_pub_actuator_controls.update();
 }
