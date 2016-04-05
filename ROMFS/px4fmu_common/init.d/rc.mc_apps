@@ -21,7 +21,7 @@ else
 	fi
 fi
 
-if mc_att_control start
+if mcontrol start
 then
 else
 	# try the multiplatform version

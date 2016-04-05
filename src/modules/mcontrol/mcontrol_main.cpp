@@ -58,7 +58,12 @@ int mcontrol_main(int argc, char *argv[]) {
 
 int mcontrol_thread_main(int argc, char *argv[]) {
 	warnx("starting");
-	BlockMControl Controller;
+
+	bool simulation = false;
+	if (argv != NULL && !strcmp(argv[0], "sim"))
+		simulation = true;
+	BlockMControl Controller(simulation);
+
 	thread_running = true;
 
 	while (!thread_should_exit)

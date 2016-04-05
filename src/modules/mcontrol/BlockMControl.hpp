@@ -12,16 +12,20 @@
 #include <controllib/uorb/blocks.hpp>
 #include <uORB/topics/control_state.h>
 #include <uORB/topics/vehicle_force_setpoint.h>
+#include <uORB/topics/manual_control_setpoint.h>
 
 class BlockMControl : public control::SuperBlock {
 public:
-	BlockMControl();
+	BlockMControl(bool simulation);
 	void update();
 private:
 	uORB::Subscription<control_state_s>				_sub_control_state;
 	uORB::Subscription<vehicle_attitude_s>			_sub_vehicle_attitude;
 	uORB::Subscription<vehicle_force_setpoint_s>	_sub_force_setpoint;
+	uORB::Subscription<manual_control_setpoint_s>	_sub_manual_control_setpoint;
 	uORB::Publication<actuator_controls_s>			_pub_actuator_controls;
+
+	bool _simulation;
 
 	bool poll_control_state();
 	px4_pollfd_struct_t _control_state_Poll;						// file descriptors struct to feed the system call poll
@@ -29,6 +33,9 @@ private:
 	void calculate_dt();
 	float _dt;
 	uint64_t _dt_timeStamp;											// last time the loop ran to calculate dt
+
+	void get_joystick_data();
+	float _joystick[4];
 
 	void Controller();
 	matrix::Matrix3f _Rd_prev;
