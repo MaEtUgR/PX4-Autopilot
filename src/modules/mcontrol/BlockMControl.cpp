@@ -18,7 +18,9 @@ BlockMControl::BlockMControl(bool simulation) :
 		_pub_actuator_controls(ORB_ID(actuator_controls_0), -1, &getPublications()),
 		_dt(0),
 		_dt_timeStamp(0),
-		_joystick{0,0,0,0}
+		_joystick{0,0,0,0},
+		maxeO(0),
+		maxeC(0)
 {
 	_control_state_Poll.fd = _sub_control_state.getHandle();
 	_control_state_Poll.events = POLLIN;
@@ -78,7 +80,7 @@ void BlockMControl::Controller() {
 	Matrix3f R(_sub_vehicle_attitude.get().R); 											// R   : attitude			= estimated attitude from uORB topic
 	float yaw = atan2(R(1,0),R(0,0));
 
-	Matrix3f Rd = /*matrix::eye<float, 3>();*/Dcmf(Eulerf(0,0,yaw)) * dcm;																	// Rd  : desired attitude
+	Matrix3f Rd = Dcmf(Eulerf(0,0,yaw)) * dcm;																	// Rd  : desired attitude
 	Vector3f R_z(R(0, 2), R(1, 2), R(2, 2));
 	Vector3f Rd_z(Rd(0, 2), Rd(1, 2), Rd(2, 2));
 	Vector3f e_R = R.T() * (Rd_z % R_z);
@@ -88,15 +90,17 @@ void BlockMControl::Controller() {
 	_Rd_prev = Rd;
 
 	Vector3f O(&_sub_control_state.get().roll_rate);									// O   : rate				= gyroscope measurement from uORB topic
-	//matrix::Vector3<float> rates_desired(_joystick[0], _joystick[1], _joystick[2]);
 	Vector3f Od = 1/2.0f * ((matrix::Matrix3f)(Rd.T() * Rd_d - Rd_d.T() * Rd)).V();		// Od  : desired rate		= 1/2 * (Rd' Rd_d - Rd_d' * Rd)^V
-	Vector3f e_O = O - Vector3f(0,0,_joystick[2]);// - R.T() * Rd * Od;													// e_O : rate error
+	Vector3f e_O = O - Vector3f(0,0,_joystick[2]*2);// - R.T() * Rd * Od;													// e_O : rate error
 
 	Matrix3f J = diag(Vector3f({0.0347563, 0.0458929, 0.0977}));
 	Vector3f e_C = O % (J * O);															// e_C : coriolis error because O being in body frame TODO: centripetal important?? http://sal.aalto.fi/publications/pdf-files/eluu11_public.pdf p. 5
 
 	Vector3f Od_d = (Od - _Od_prev) / _dt;												// Od_d: derivative of desired rate
 	_Od_prev = Od;
+
+	Vector3f O_d = (O - _O_prev) / _dt;													// O_d: derivative of the rate TODO: estimate angular acceleration
+	_O_prev = O;
 
 	Vector3f e_M = J * (O.Hat()*R.T()*Rd*Od /*- R.T()*Rd*Od_d*/);							// e_M : Model feed forward	= J * (O^^*R'*Rd*Od - R'*Rd*Od_d)
 
@@ -107,20 +111,25 @@ void BlockMControl::Controller() {
 	printf("R2\n"); R2.print();
 	printf("e_O\n"); e_O.print();
 	printf("e_R\n"); (e_R*100).print();*/
-	//printf("e_O\n"); e_O.print();
-	//printf("e_C\n"); e_C.print();
+	/*float eOnorm = e_O.norm(); // e_C significance test
+	float eCnorm = e_C.norm();
+	maxeO = eOnorm > maxeO ? eOnorm : maxeO;
+	maxeC = eCnorm > maxeC ? eCnorm : maxeC;
+	printf("maxeO %f\n", (double)maxeO);
+	printf("maxeC %f\n", (double)maxeC);*/
+	/*printf("e_O\n"); e_O.print();
+	printf("e_C\n"); e_C.print();*/
 	//printf("e_M\n"); e_M.print();
 
 	Vector3f m;
 	if(_simulation)
-		m = -0.60f * e_O -3.0f * e_R; //+ e_C; //- e_M;									// m   : angular moment to apply to quad
+		m = -0.60f * e_O -2.0f * e_R /*+ e_C*/ /*- e_M*/;									// m   : angular moment to apply to quad
 	else {
-		m = -0.06f * e_O -0.2f * e_R;
+		m = -0.06f * e_O -0.2f * e_R /*-0.004f * O_d*/;
 		m = m.emult(Vector3f(1,1,1));															// draft for using different gains depending on roll, pitch or yaw
 	}
-	//printf("m\n"); m.print();
 
-	float thrust_desired = _joystick[3]*1.4f-0.4f;//(_joystick[3]-0.5f)*2;
+	float thrust_desired = _joystick[3]*1.4f-0.4f;
 	thrust_desired = thrust_desired > 0 ? thrust_desired : 0;
 	//printf("thrust_desired: %f\n",(double)thrust_desired);
 	publishMoment(thrust_desired, m);
