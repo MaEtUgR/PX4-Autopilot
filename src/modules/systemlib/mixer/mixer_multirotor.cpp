@@ -227,7 +227,7 @@ MultirotorMixer::mix(float *outputs, unsigned space, uint16_t *status_reg)
 
 	if (status_reg != NULL) (*status_reg) = 0;		// clean register for saturation status flags
 
-	/* perform initial mix pass yielding unbounded outputs, ignore yaw, just to check if they already exceed the limits */
+	// perform initial mix pass yielding unbounded outputs, ignore yaw, just to check if they already exceed the limits
 	float		min = 1;
 	float		max = 0;
 
@@ -236,18 +236,18 @@ MultirotorMixer::mix(float *outputs, unsigned space, uint16_t *status_reg)
 
 		float out = (outputs[i] + thrust) * _rotors[i].out_scale;
 
-		if (out < min) min = out; // calculate min and max output values
+		if (out < min) min = out; 			// calculate min and max output values of any rotor
 		if (out > max) max = out;
 	}
 
-	float boost = 0.0f;								// value added to demanded thrust (can also be negative)
-	float limit_scale = 1.0f;					// scale for demanded roll and pitch
+	float boost = 0.0f;						// value added to demanded thrust (can also be negative)
+	float limit_scale = 1.0f;				// scale for demanded roll and pitch
 
 	if(max - min > 1) {						// hard case where we can't meet the controller output because it exceeds the maximal difference
 		boost = (1 - max - min) / 2;		// from equation: (max - 1) + b = -(min + b) which states that after the application of boost the violation above 1 and below 0 is equal
-		limit_scale = 1 / (max - min);	// we want to scale such that roll and pitch produce min = 0 and max = 1 with the boost from above applied
+		limit_scale = 1 / (max - min);		// we want to scale such that roll and pitch produce min = 0 and max = 1 with the boost from above applied
 	} else if(min < 0)
-		boost = -min;							// easy cases where we just shift the the throttle such that the controller output can be met
+		boost = -min;						// easy cases where we just shift the the throttle such that the controller output can be met
 	else if (max > 1)
 		boost = 1 - max;
 
@@ -255,7 +255,6 @@ MultirotorMixer::mix(float *outputs, unsigned space, uint16_t *status_reg)
 	for(int i = 0; i <_rotor_count; i++)
 		outputs[i] = (outputs[i] * limit_scale);
 
-	//printf("min: %f max: %f scale: %f thrust: %f\n",(double)(min+boost),(double)(max+boost), (double)limit_scale, (double)thrust);
 	// notify if saturation has occurred
 	if(status_reg != NULL) {
 		if (min < 0.0f) (*status_reg) |= PX4IO_P_STATUS_MIXER_LOWER_LIMIT;
@@ -263,54 +262,49 @@ MultirotorMixer::mix(float *outputs, unsigned space, uint16_t *status_reg)
 	}
 
 	// mix again but now with thrust boost, scale roll/pitch and also add yaw
-	float min_yaw = 1;
-	float max_yaw = 0;
-	float min_yaw_term = 0;
-	float max_yaw_term = 0;
+	min = 1;
+	max = 0;
+	float min_term = 0;
+	float max_term = 0;
 
 	for(int i = 0; i < _rotor_count; i++) {
 		float yaw_term = yaw * _rotors[i].yaw_scale;
 		float out = (outputs[i] + yaw_term + thrust) * _rotors[i].out_scale;
 
-		if (out < min_yaw) {
-			min_yaw = out;
-			min_yaw_term = yaw_term;
+		if (out < min) {
+			min = out;
+			min_term = yaw_term;
 		}
-		if (out > max_yaw) {
-			max_yaw = out;
-			max_yaw_term = yaw_term;
+		if (out > max) {
+			max = out;
+			max_term = yaw_term;
 		}
 	}
 
 	boost = 0.0f;
-	float low_limit_scale = 1.0f;					// scale for demanded yaw
+	float low_limit_scale = 1.0f;			// scale for demanded yaw only
 	float high_limit_scale = 1.0f;
 
-	if(max_yaw - min_yaw > 1) {
-		boost = (1 - max_yaw - min_yaw) / 2;
-		if(min_yaw < 0 && min_yaw_term < 0) {
-			limit_scale = (min_yaw + boost - min_yaw_term) / -(min_yaw_term);
+	if(max - min > 1) {						// hard case where we can't meet the controller output because it exceeds the maximal difference
+		boost = (1 - max - min) / 2;		// from equation: (max - 1) + b = -(min + b) which states that after the application of boost the violation above 1 and below 0 is equal
+		if(min < 0 && min_term < 0) {		// we want to scale only the yaw term to fill up the remaining control actuation such that min 0 and max 1 and roll pitch does NOT get rescaled
+			limit_scale = (min + boost - min_term) / -(min_term);
 			//printf("-");
 		}
-		if (max_yaw > 1 && max_yaw_term > 0){
-			limit_scale = (1 - (max_yaw + boost - max_yaw_term)) / max_yaw_term;
+		if (max > 1 && max_term > 0){
+			limit_scale = (1 - (max + boost - max_term)) / max_term;
 			//printf("+");
 		}
 		limit_scale = low_limit_scale < high_limit_scale ? low_limit_scale : high_limit_scale;
 		limit_scale = limit_scale > 0 ? limit_scale : 0;
-		//printf("min: %.2f max: %.2f scale: %.2f thrust: %.2f min_term: %.2f max_term: %.2f\n",(double)(min_yaw+boost),(double)(max_yaw+boost), (double)limit_scale, (double)thrust, (double)min_yaw_term, (double)max_yaw_term);
-		/*for (unsigned i = 0; i < _rotor_count; i++) {
-			printf("%d: %.2f", i, (double)(outputs[i] + yaw * _rotors[i].yaw_scale * limit_scale + thrust + boost));
-		}*/
-		//printf("\n");
-	} else if(min_yaw < 0)
-		boost = -min_yaw;
-	else if (max_yaw > 1)
-		boost = 1 - max_yaw;
+	} else if(min < 0)
+		boost = -min;						// easy cases where we just shift the the throttle such that the controller output can be met
+	else if (max > 1)
+		boost = 1 - max;
 
 	// inform about yaw limit reached
 	if(status_reg != NULL) {
-		if (min_yaw < 0.0f || max_yaw > 1.0f) (*status_reg) |= PX4IO_P_STATUS_MIXER_YAW_LIMIT;
+		if (min < 0.0f || max > 1.0f) (*status_reg) |= PX4IO_P_STATUS_MIXER_YAW_LIMIT;
 	}
 
 	/* add yaw and scale outputs to range idle_speed...1 */
