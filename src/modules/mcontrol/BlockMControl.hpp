@@ -12,6 +12,7 @@
 #include <controllib/uorb/blocks.hpp>
 #include <uORB/topics/control_state.h>
 #include <uORB/topics/vehicle_force_setpoint.h>
+#include <uORB/topics/vehicle_attitude_setpoint.h>
 #include <uORB/topics/manual_control_setpoint.h>
 
 class BlockMControl : public control::SuperBlock {
@@ -23,6 +24,7 @@ private:
 	uORB::Subscription<vehicle_attitude_s>			_sub_vehicle_attitude;
 	uORB::Subscription<vehicle_force_setpoint_s>	_sub_force_setpoint;
 	uORB::Subscription<manual_control_setpoint_s>	_sub_manual_control_setpoint;
+	uORB::Subscription<vehicle_attitude_setpoint_s>	_sub_vehicle_attitude_setpoint;
 	uORB::Publication<actuator_controls_s>			_pub_actuator_controls;
 
 	bool _simulation;

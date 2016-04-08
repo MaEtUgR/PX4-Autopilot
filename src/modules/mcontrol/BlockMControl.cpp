@@ -15,6 +15,7 @@ BlockMControl::BlockMControl(bool simulation) :
 		_sub_vehicle_attitude(ORB_ID(vehicle_attitude), 0, 0, &getSubscriptions()),
 		_sub_force_setpoint(ORB_ID(vehicle_force_setpoint), 0, 0, &getSubscriptions()),
 		_sub_manual_control_setpoint(ORB_ID(manual_control_setpoint), 0, 0, &getSubscriptions()),
+		_sub_vehicle_attitude_setpoint(ORB_ID(vehicle_attitude_setpoint), 0, 0, &getSubscriptions()),
 		_pub_actuator_controls(ORB_ID(actuator_controls_0), -1, &getPublications()),
 		_dt(0),
 		_dt_timeStamp(0),
@@ -78,13 +79,15 @@ void BlockMControl::Controller() {
 	Dcmf dcm(euler);
 
 	Matrix3f R(_sub_vehicle_attitude.get().R); 											// R   : attitude			= estimated attitude from uORB topic
-	float yaw = atan2(R(1,0),R(0,0));
 
-	Matrix3f Rd = Dcmf(Eulerf(0,0,yaw)) * dcm;																	// Rd  : desired attitude
-	Vector3f R_z(R(0, 2), R(1, 2), R(2, 2));
-	Vector3f Rd_z(Rd(0, 2), Rd(1, 2), Rd(2, 2));
-	Vector3f e_R = R.T() * (Rd_z % R_z);
-	//Vector3f e_R = 1/2.f * ((matrix::Matrix3f)(Rd.T() * R - R.T() * Rd)).V();			// e_R : attitude error		= 1/2 * (Rd' R - R' * Rd)^V
+	float yaw = atan2(R(1,0),R(0,0));				// direct desired attitude hack
+	Matrix3f Rd = Dcmf(Eulerf(0,0,yaw)) * dcm;
+
+	//Matrix3f Rd(_sub_vehicle_attitude_setpoint.get().R_body);							// Rd  : desired attitude	= desired attitude from uORB topic
+	//Vector3f R_z(R(0, 2), R(1, 2), R(2, 2));		// only roll pitch attitude hack
+	//Vector3f Rd_z(Rd(0, 2), Rd(1, 2), Rd(2, 2));
+	//Vector3f e_R = R.T() * (Rd_z % R_z);
+	Vector3f e_R = 1/2.f * ((matrix::Matrix3f)(Rd.T() * R - R.T() * Rd)).V();			// e_R : attitude error		= 1/2 * (Rd' R - R' * Rd)^V
 
 	Matrix3f Rd_d = (Rd - _Rd_prev) / _dt;												// Rd_d: derivative of desired attitude
 	_Rd_prev = Rd;
@@ -156,9 +159,8 @@ void BlockMControl::rateController_original() {
 }
 
 void BlockMControl::publishMoment(float thrust, matrix::Vector3f moment) {
-	for(int i = 0; i < 3; i++) {
+	for(int i = 0; i < 3; i++)
 		_pub_actuator_controls.get().control[i] = PX4_ISFINITE(moment(i)) ? moment(i) : 0.0f;
-	}
 	_pub_actuator_controls.get().control[3] = PX4_ISFINITE(thrust) && thrust > 0.0f ? thrust : 0.0f;
 	_pub_actuator_controls.update();
 }
