@@ -17,7 +17,6 @@ BlockMControl::BlockMControl(bool simulation) :
 		_sub_manual_control_setpoint(ORB_ID(manual_control_setpoint), 0, 0, &getSubscriptions()),
 		_sub_vehicle_attitude_setpoint(ORB_ID(vehicle_attitude_setpoint), 0, 0, &getSubscriptions()),
 		_pub_actuator_controls(ORB_ID(actuator_controls_0), -1, &getPublications()),
-		_dt(0),
 		_dt_timeStamp(0),
 		_joystick{0,0,0,0},
 		maxeO(0),
@@ -54,7 +53,7 @@ bool BlockMControl::poll_control_state() {
 
 void BlockMControl::calculate_dt() {
 	uint64_t newTimeStamp = hrt_absolute_time();
-	_dt = (newTimeStamp - _dt_timeStamp) / 1e6f;
+	setDt((newTimeStamp - _dt_timeStamp) / 1e6f);
 	_dt_timeStamp = newTimeStamp;
 }
 
@@ -89,7 +88,7 @@ void BlockMControl::Controller() {
 	//Vector3f e_R = R.T() * (Rd_z % R_z);
 	Vector3f e_R = 1/2.f * ((matrix::Matrix3f)(Rd.T() * R - R.T() * Rd)).V();			// e_R : attitude error		= 1/2 * (Rd' R - R' * Rd)^V
 
-	Matrix3f Rd_d = (Rd - _Rd_prev) / _dt;												// Rd_d: derivative of desired attitude
+	Matrix3f Rd_d = (Rd - _Rd_prev) / getDt();												// Rd_d: derivative of desired attitude
 	_Rd_prev = Rd;
 
 	Vector3f O(&_sub_control_state.get().roll_rate);									// O   : rate				= gyroscope measurement from uORB topic
@@ -99,10 +98,10 @@ void BlockMControl::Controller() {
 	Matrix3f J = diag(Vector3f({0.0347563, 0.0458929, 0.0977}));
 	Vector3f e_C = O % (J * O);															// e_C : coriolis error because O being in body frame TODO: centripetal important?? http://sal.aalto.fi/publications/pdf-files/eluu11_public.pdf p. 5
 
-	Vector3f Od_d = (Od - _Od_prev) / _dt;												// Od_d: derivative of desired rate
+	Vector3f Od_d = (Od - _Od_prev) / getDt();												// Od_d: derivative of desired rate
 	_Od_prev = Od;
 
-	Vector3f O_d = (O - _O_prev) / _dt;													// O_d: derivative of the rate TODO: estimate angular acceleration
+	Vector3f O_d = (O - _O_prev) / getDt();													// O_d: derivative of the rate TODO: estimate angular acceleration
 	_O_prev = O;
 
 	Vector3f e_M = J * (O.Hat()*R.T()*Rd*Od /*- R.T()*Rd*Od_d*/);							// e_M : Model feed forward	= J * (O^^*R'*Rd*Od - R'*Rd*Od_d)
@@ -152,7 +151,7 @@ void BlockMControl::rateController_original() {
 	math::Vector<3> _rate_d = {0.002f, 0.002f, 0.0f};
 
 	math::Vector<3> rates_err = rates_sp*2 - rates;
-	math::Vector<3> _control_output = _rate_p.emult(rates_err) + _rate_d.emult(_rates_prev - rates) / _dt;
+	math::Vector<3> _control_output = _rate_p.emult(rates_err) + _rate_d.emult(_rates_prev - rates) / getDt();
 	_rates_prev = rates;
 
 	publishMoment(thrust_sp, Vector3f(_control_output.data));

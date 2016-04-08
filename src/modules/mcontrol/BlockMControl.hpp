@@ -33,7 +33,6 @@ private:
 	px4_pollfd_struct_t _control_state_Poll;						// file descriptors struct to feed the system call poll
 
 	void calculate_dt();
-	float _dt;
 	uint64_t _dt_timeStamp;											// last time the loop ran to calculate dt
 
 	void get_joystick_data();
