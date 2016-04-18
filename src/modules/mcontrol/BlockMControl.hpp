@@ -43,8 +43,8 @@ private:
 	matrix::Vector3f _Od_prev;
 	matrix::Vector3f _O_prev;
 
-	float maxeO;
-	float maxeC;
+	void ControllerQ();
+	template <typename T> int sign(T val) {return (T(0) < val) - (val < T(0));}
 
 	void rateController_original();
 	math::Vector<3> _rates_prev;
