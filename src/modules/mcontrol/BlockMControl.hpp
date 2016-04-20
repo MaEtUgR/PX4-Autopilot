@@ -49,5 +49,5 @@ private:
 	void rateController_original();
 	math::Vector<3> _rates_prev;
 
-	void publishMoment(float thrust, matrix::Vector3f moment);
+	void publishMoment(matrix::Vector3f moment);
 };
