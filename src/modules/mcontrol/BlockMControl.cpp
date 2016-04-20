@@ -125,16 +125,15 @@ void BlockMControl::ControllerQ() {
 	Eulerf euler(_joystick[0]/1.5f, _joystick[1]/1.5f, 0);				// joystick euler attitude set point TODO: better translation through vector
 	Quatf qjoy(euler);
 
-	Quatf q(_sub_vehicle_attitude.get().q); 							// q   : attitude			= estimated attitude from uORB topic
-	Quatf qcmd(_sub_vehicle_attitude_setpoint.get().q_d);				// qcmd: desired attitude	= desired attitude from uORB topic
-	qcmd = qjoy;
+	Quatf q(_sub_vehicle_attitude.get().q); 							// q   : attitude					= estimated attitude from uORB topic
+	Quatf qd(_sub_vehicle_attitude_setpoint.get().q_d);					// qd  : desired attitude			= desired attitude from uORB topic
+	qd = qjoy;
 
 	if(_joystick[3] < 0)
-		qcmd = Quatf(0,1,0,0);
-	Dcmf(qcmd).print();
+		qd = qd * Quatf(0,1,0,0);
 
 	Dcmf R(q);															// reduced attitude control (only roll and pitch because they are much faster)
-	Dcmf Rd(qcmd);														// get only the z unit vectors by converting to rotation matrices and taking the last column
+	Dcmf Rd(qd);														// get only the z unit vectors by converting to rotation matrices and taking the last column
 	Vector3f Rz(R(0, 2), R(1, 2), R(2, 2));
 	Vector3f Rdz(Rd(0, 2), Rd(1, 2), Rd(2, 2));
 	float alpha = acosf(Rz.dot(Rdz));									// get the angle between them
@@ -142,21 +141,16 @@ void BlockMControl::ControllerQ() {
 	axis.normalize();
 	Vector3f qered13 = sinf(alpha/2) * axis;
 	Quatf qered(cos(alpha/2), qered13(0), qered13(1), qered13(2));		// build up the quaternion that does this rotation
-	Quatf qcmdred = q * qered;
+	Quatf qdred = q * qered;											// qdred: reduced desired attitude	= desired attitude from uORB topic
 
-	float p = 1.0f;
-	Quatf qmix = qcmdred * qcmd.inversed();								// mixing reduced and full attitude control
-	//qmix *= sign(qmix(0));
-	qmix(0) = acosf(q(0));
-	qmix(3) = asinf(q(3));
-	//qmix.print();
-	float alphahalf = -asinf(qmix(3));
+	float p = 0.4f;
+	Quatf qmix = qdred.inversed() * qd;									// mixing reduced and full attitude control
+	qmix *= sign(qmix(0));												// take care of the ambiguity of a quaternion
+	float alphahalf = asinf(qmix(3));
 	qmix(0) = cosf(p*alphahalf);
+	qmix(1) = qmix(2) = 0;
 	qmix(3) = sinf(p*alphahalf);
-	//printf("alphahalf: %F\n",(double)alphahalf);
-	//printf("1:\n");qcmd.print();
-	qcmd = qcmdred /** qmix*/;
-	//printf("2:\n");qcmd.print();
+	Quatf qcmd = qdred * qmix;
 
 	Quatf qe = q * qcmd.inversed();										// qe : attitude error		= qd^-1 * q
 	Vector3f e_R = 2.f * sign(qe(0)) * Vector3f(qe(1),qe(2),qe(3));		// take care of the ambiguity of a quaternion
