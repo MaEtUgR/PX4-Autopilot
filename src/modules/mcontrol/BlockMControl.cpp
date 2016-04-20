@@ -37,8 +37,7 @@ void BlockMControl::update() {
 	//printf("Joystick: % .1f % .1f % .1f % .1f\n", (double)_joystick[0], (double)_joystick[1], (double)_joystick[2], (double)_joystick[3]);
 	//printf("Kill: %d\n", _sub_manual_control_setpoint.get().kill_switch);
 
-	//Controller();
-	ControllerQ();
+	Controller();
 	//rateController_original();
 }
 
@@ -74,65 +73,55 @@ void BlockMControl::get_joystick_data() {
 
 void BlockMControl::Controller() {
 	Eulerf euler(_joystick[0]/1.5f, _joystick[1]/1.5f, 0);				// joystick euler attitude set point TODO: better translation through vector
-	Dcmf Rjoy(euler);
+	if(_joystick[3] < 0) {
+		_qd = Quatf(euler) * Quatf(0,1,0,0);	// flip
+		float r[] = {1,0,0, 0,-1,0, 0,0,-1};
+		_Rd = Matrix3f(r);
+	} else {
+		_qd = Quatf(euler);
+		_Rd = Dcmf(euler);
+	}
 
-	Matrix3f R(_sub_vehicle_attitude.get().R); 											// R   : attitude			= estimated attitude from uORB topic
-
-	//float yaw = atan2(R(1,0),R(0,0));				// direct desired attitude hack
-	Matrix3f Rd(_sub_vehicle_attitude_setpoint.get().R_body);							// Rd  : desired attitude	= desired attitude from uORB topic
-	Rd = /*Dcmf(Eulerf(0,0,yaw)) **/ Rjoy;
-
-	float r[] = {1,0,0, 0,-1,0, 0,0,-1};
-	if(_joystick[3] < 0)
-		Rd = Matrix3f(r);
-
-	Vector3f R_z(R(0, 2), R(1, 2), R(2, 2));		// reduced attitude control
-	Vector3f Rd_z(Rd(0, 2), Rd(1, 2), Rd(2, 2));
-	Vector3f e_R = R.T() * (Rd_z % R_z);
-	//e_R = 1/2.f * ((matrix::Matrix3f)(Rd.T() * R - R.T() * Rd)).vee();			// e_R : attitude error		= 1/2 * (Rd' R - R' * Rd)^V
-
-	Matrix3f Rd_d = (Rd - _Rd_prev) / getDt();												// Rd_d: derivative of desired attitude
-	_Rd_prev = Rd;
+	Vector3f e_R;
+	if(1)
+		e_R = ControllerQ();
+	else
+		e_R = ControllerR();
 
 	Vector3f O(&_sub_control_state.get().roll_rate);									// O   : rate				= gyroscope measurement from uORB topic
-	Vector3f Od = 1/2.0f * ((matrix::Matrix3f)(Rd.T() * Rd_d - Rd_d.T() * Rd)).vee();	// Od  : desired rate		= 1/2 * (Rd' Rd_d - Rd_d' * Rd)^V
-	Vector3f e_O = O - Vector3f(0,0,_joystick[2]*2);// - R.T() * Rd * Od;													// e_O : rate error
+	Vector3f e_O = O - Vector3f(0,0,_joystick[2]*2);									// e_O : rate error
 
-	Matrix3f J = diag(Vector3f({0.0347563, 0.0458929, 0.0977}));
-	Vector3f e_C = O % (J * O);															// e_C : coriolis error because O being in body frame TODO: centripetal important?? http://sal.aalto.fi/publications/pdf-files/eluu11_public.pdf p. 5
-
-	Vector3f Od_d = (Od - _Od_prev) / getDt();												// Od_d: derivative of desired rate
-	_Od_prev = Od;
-
-	Vector3f O_d = (O - _O_prev) / getDt();													// O_d: derivative of the rate TODO: estimate angular acceleration
+	Vector3f O_d = (O - _O_prev) / getDt();												// O_d: derivative of the rate TODO: estimate angular acceleration
 	_O_prev = O;
-
-	Vector3f e_M = J * (O.hat()*R.T()*Rd*Od /*- R.T()*Rd*Od_d*/);							// e_M : Model feed forward	= J * (O^^*R'*Rd*Od - R'*Rd*Od_d)
 
 	Vector3f m;
 	if(_simulation)
-		m = -0.60f * e_O -2.0f * e_R /*+ e_C*/ /*- e_M*/;									// m   : angular moment to apply to quad
+		m = -0.60f * e_O -2.0f * e_R -0.004f * O_d;										// m   : angular moment to apply to quad
 	else {
-		m = -0.06f * e_O -0.2f * e_R /*-0.004f * O_d*/;
+		m = -0.06f * e_O -0.2f * e_R -0.004f * O_d;
 		m = m.emult(Vector3f(1,1,1));															// draft for using different gains depending on roll, pitch or yaw
 	}
 
 	publishMoment(m);
 }
 
-void BlockMControl::ControllerQ() {
-	// ATTENTION: quaternions are defined differently than in the paper they are just complex conjugates/reverse rotations compared to the paper
-	Eulerf euler(_joystick[0]/1.5f, _joystick[1]/1.5f, 0);				// joystick euler attitude set point TODO: better translation through vector
-	Quatf qjoy(euler);
+Vector3f BlockMControl::ControllerR() {
+	Matrix3f R(_sub_vehicle_attitude.get().R); 											// R   : attitude			= estimated attitude from uORB topic
+	Matrix3f Rd(_sub_vehicle_attitude_setpoint.get().R_body);							// Rd  : desired attitude	= desired attitude from uORB topic
+	Rd = _Rd;
 
+	Vector3f R_z(R(0, 2), R(1, 2), R(2, 2));		// reduced attitude control
+	Vector3f Rd_z(Rd(0, 2), Rd(1, 2), Rd(2, 2));
+	return R.T() * (Rd_z % R_z);
+	//return 1/2.f * ((matrix::Matrix3f)(Rd.T() * R - R.T() * Rd)).vee();				// e_R : attitude error		= 1/2 * (Rd' R - R' * Rd)^V
+}
+
+Vector3f BlockMControl::ControllerQ() {									// ATTENTION: quaternions are defined differently than in the paper they are just complex conjugates/reverse rotations compared to the paper
 	Quatf q(_sub_vehicle_attitude.get().q); 							// q   : attitude					= estimated attitude from uORB topic
 	Quatf qd(_sub_vehicle_attitude_setpoint.get().q_d);					// qd  : desired attitude			= desired attitude from uORB topic
-	qd = qjoy;
+	qd = _qd;
 
-	if(_joystick[3] < 0)
-		qd = qd * Quatf(0,1,0,0);
-
-	Dcmf R(q);															// reduced attitude control (only roll and pitch because they are much faster)
+	Dcmf R(q);															// reduced attitude control part (only roll and pitch because they are much faster)
 	Dcmf Rd(qd);														// get only the z unit vectors by converting to rotation matrices and taking the last column
 	Vector3f Rz(R(0, 2), R(1, 2), R(2, 2));
 	Vector3f Rdz(Rd(0, 2), Rd(1, 2), Rd(2, 2));
@@ -141,35 +130,19 @@ void BlockMControl::ControllerQ() {
 	axis.normalize();
 	Vector3f qered13 = sinf(alpha/2) * axis;
 	Quatf qered(cos(alpha/2), qered13(0), qered13(1), qered13(2));		// build up the quaternion that does this rotation
-	Quatf qdred = q * qered;											// qdred: reduced desired attitude	= desired attitude from uORB topic
+	Quatf qdred = q * qered;											// qdred: reduced desired attitude	= rotation that's needed to align the z axis but seen from the world frame
 
-	float p = 0.4f;
-	Quatf qmix = qdred.inversed() * qd;									// mixing reduced and full attitude control
+	float p = 0.4f;		// TODO: parameter!								// mixing reduced and full attitude control
+	Quatf qmix = qdred.inversed() * qd;									// qmix	:
 	qmix *= sign(qmix(0));												// take care of the ambiguity of a quaternion
-	float alphahalf = asinf(qmix(3));
-	qmix(0) = cosf(p*alphahalf);
-	qmix(1) = qmix(2) = 0;
+	float alphahalf = asinf(qmix(3));									// calculate half of the angle that the full attitude controller would do in body yaw direction
+	qmix(0) = cosf(p*alphahalf);										// scale by a factor p to reduce the gain on yaw
+	qmix(1) = qmix(2) = 0;												// reconstruct a quaternion that does the body yaw rotation with a smaller error
 	qmix(3) = sinf(p*alphahalf);
-	Quatf qcmd = qdred * qmix;
+	Quatf qcmd = qdred * qmix;											// qcmd	: final mixed desired attitude for calculating the error
 
-	Quatf qe = q * qcmd.inversed();										// qe : attitude error		= qd^-1 * q
-	Vector3f e_R = 2.f * sign(qe(0)) * Vector3f(qe(1),qe(2),qe(3));		// take care of the ambiguity of a quaternion
-
-	Vector3f O(&_sub_control_state.get().roll_rate);					// O   : rate				= gyroscope measurement from uORB topic
-	Vector3f e_O = O - Vector3f(0,0,_joystick[2]*2);					// e_O : rate error
-
-	Vector3f O_d = (O - _O_prev) / getDt();								// O_d: derivative of the rate TODO: estimate angular acceleration
-	_O_prev = O;
-
-	Vector3f m;
-	if(_simulation)
-		m = -0.60f * e_O -2.0f * e_R;									// m   : angular moment to apply to quad
-	else {
-		m = -0.06f * e_O -0.2f * e_R /*-0.004f * O_d*/;
-		m = m.emult(Vector3f(1,1,1));									// draft for using different gains depending on roll, pitch or yaw
-	}
-
-	publishMoment(m);
+	Quatf qe = q * qcmd.inversed();										// qe : attitude error				= rotation from the actual attitude to the final mixed desired attitude
+	return 2.f * sign(qe(0)) * Vector3f(qe(1),qe(2),qe(3));				// using the sin(alpha/2) scaled rotation axis as correction term plus taking care of the ambiguity of a quaternion
 }
 
 void BlockMControl::rateController_original() {

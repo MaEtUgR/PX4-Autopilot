@@ -39,14 +39,18 @@ private:
 	float _joystick[4];
 
 	void Controller();
+	matrix::Quatf _qd;
+	matrix::Matrix3f _Rd;
+
+	matrix::Vector3f ControllerQ();									// quaternion based attitude controller
+	template<typename T> int sign(T val) {return (T(0) < val) - (val < T(0));}	// type-safe signum function (http://stackoverflow.com/questions/1903954/is-there-a-standard-sign-function-signum-sgn-in-c-c)
+
+	matrix::Vector3f ControllerR();									// matrix based attitude controller
 	matrix::Matrix3f _Rd_prev;
 	matrix::Vector3f _Od_prev;
 	matrix::Vector3f _O_prev;
 
-	void ControllerQ();
-	template <typename T> int sign(T val) {return (T(0) < val) - (val < T(0));}
-
-	void rateController_original();
+	void rateController_original();									// the original rate controller as a reference
 	math::Vector<3> _rates_prev;
 
 	void publishMoment(matrix::Vector3f moment);
