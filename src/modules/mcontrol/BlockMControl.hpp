@@ -8,7 +8,7 @@
 #pragma once
 #include <px4_posix.h>
 #include <mathlib/mathlib.h>
-#include <matrix/Matrix3.hpp>
+#include <matrix/Matrix.hpp>
 #include <controllib/uorb/blocks.hpp>
 #include <uORB/topics/control_state.h>
 #include <uORB/topics/vehicle_force_setpoint.h>
@@ -53,5 +53,8 @@ private:
 	void rateController_original();									// the original rate controller as a reference
 	math::Vector<3> _rates_prev;
 
-	void publishMoment(matrix::Vector3f moment);
+	matrix::Quatf FtoQ(matrix::Vector3f F, float yaw);
+	matrix::Dcmf FtoR(matrix::Vector3f F, float yaw);
+
+	void publishMoment(matrix::Vector3f moment, float thrust);
 };

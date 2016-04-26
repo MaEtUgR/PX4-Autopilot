@@ -72,15 +72,24 @@ void BlockMControl::get_joystick_data() {
 }
 
 void BlockMControl::Controller() {
-	Eulerf euler(_joystick[0]/1.5f, _joystick[1]/1.5f, 0);				// joystick euler attitude set point TODO: better translation through vector
+	Eulerf euler(_joystick[0]/1.5f, _joystick[1]/1.5f, 0/*_joystick[2]*1.5f*/);				// joystick euler attitude set point TODO: better translation through vector
 	if(_joystick[3] < 0) {
-		_qd = Quatf(euler) * Quatf(0,1,0,0);	// flip
+		_qd = /*Quatf(euler) **/ Quatf(0,1,0,0);	// flip
 		float r[] = {1,0,0, 0,-1,0, 0,0,-1};
 		_Rd = Matrix3f(r);
 	} else {
 		_qd = Quatf(euler);
 		_Rd = Dcmf(euler);
 	}
+
+	/*Vector3f F(&_sub_force_setpoint.get().x);
+	F = -F;
+	if(F.norm() < 0.001f)
+		F(2) = 0.001f;*/
+	/*_Rd = FtoR(F, _sub_force_setpoint.get().yaw_rate);
+	_qd = Quatf(_Rd);*/
+	//_qd = FtoQ(F, _sub_force_setpoint.get().yaw_rate);
+	//_qd.print();
 
 	Vector3f e_R;
 	if(1)
@@ -102,7 +111,10 @@ void BlockMControl::Controller() {
 		m = m.emult(Vector3f(1,1,1));															// draft for using different gains depending on roll, pitch or yaw
 	}
 
-	publishMoment(m);
+	float thrust = _sub_vehicle_attitude_setpoint.get().thrust;
+	thrust = _joystick[3]*1.4f-0.4f;
+	//thrust = F.norm()*1.4f-0.4f;
+	publishMoment(m, thrust);
 }
 
 Vector3f BlockMControl::ControllerR() {
@@ -113,13 +125,19 @@ Vector3f BlockMControl::ControllerR() {
 	Vector3f R_z(R(0, 2), R(1, 2), R(2, 2));		// reduced attitude control
 	Vector3f Rd_z(Rd(0, 2), Rd(1, 2), Rd(2, 2));
 	return R.T() * (Rd_z % R_z);
-	//return 1/2.f * ((matrix::Matrix3f)(Rd.T() * R - R.T() * Rd)).vee();				// e_R : attitude error		= 1/2 * (Rd' R - R' * Rd)^V
+	//return 1/2.f * ((Dcmf)(Rd.T() * R - R.T() * Rd)).vee();				// e_R : attitude error		= 1/2 * (Rd' R - R' * Rd)^V
 }
 
-Vector3f BlockMControl::ControllerQ() {									// ATTENTION: quaternions are defined differently than in the paper they are just complex conjugates/reverse rotations compared to the paper
+Vector3f BlockMControl::ControllerQ() {									// ATTENTION: quaternions are defined differently than in the paper they are complex conjugates/reverse rotations compared to the paper
 	Quatf q(_sub_vehicle_attitude.get().q); 							// q   : attitude					= estimated attitude from uORB topic
 	Quatf qd(_sub_vehicle_attitude_setpoint.get().q_d);					// qd  : desired attitude			= desired attitude from uORB topic
 	qd = _qd;
+
+	Quatf qe = q * qd.inversed();										// full quaternion attitude control
+	if(qe(0) < 0) {														// qe : attitude error				= rotation from the actual attitude to the desired attitude
+		qe *= -1;														// take care of the ambiguity of a quaternion
+		qd = qe.inversed() * q;											// this step is needed to have a corrected unambiguous qd for the mix of reduced and full attitude later
+	}
 
 	Dcmf R(q);															// reduced attitude control part (only roll and pitch because they are much faster)
 	Dcmf Rd(qd);														// get only the z unit vectors by converting to rotation matrices and taking the last column
@@ -128,20 +146,18 @@ Vector3f BlockMControl::ControllerQ() {									// ATTENTION: quaternions are de
 	float alpha = acosf(Rz.dot(Rdz));									// get the angle between them
 	Vector3f axis = Rz % Rdz;											// and the axis to rotate from one to the other
 	axis.normalize();
-	Vector3f qered13 = sinf(alpha/2) * axis;
-	Quatf qered(cos(alpha/2), qered13(0), qered13(1), qered13(2));		// build up the quaternion that does this rotation
+	Vector3f qered13 = sinf(alpha/2.f) * axis;
+	Quatf qered(cos(alpha/2.f), qered13(0), qered13(1), qered13(2));	// build up the quaternion that does this rotation
 	Quatf qdred = q * qered;											// qdred: reduced desired attitude	= rotation that's needed to align the z axis but seen from the world frame
 
 	float p = 0.4f;		// TODO: parameter!								// mixing reduced and full attitude control
-	Quatf qmix = qdred.inversed() * qd;									// qmix	:
-	qmix *= sign(qmix(0));												// take care of the ambiguity of a quaternion
-	float alphahalf = asinf(qmix(3));									// calculate half of the angle that the full attitude controller would do in body yaw direction
-	qmix(0) = cosf(p*alphahalf);										// scale by a factor p to reduce the gain on yaw
-	qmix(1) = qmix(2) = 0;												// reconstruct a quaternion that does the body yaw rotation with a smaller error
+	Quatf qmix = qdred.inversed()*qd;									// qmix	: the roatation from full attitude to reduced attitude correction -> only body yaw roatation -> qmix = [cos(alpha_mix/2) 0 0 sin(alpha_mix/2)]
+	float alphahalf = asinf(qmix(3));									// calculate the angle alpha/2 that the full attitude controller would do more than the reduced in body yaw direction
+	qmix(0) = cosf(p*alphahalf);										// reconstruct a quaternion that scales the body yaw rotation angle error by p = K_yaw / K_roll,pitch
 	qmix(3) = sinf(p*alphahalf);
-	Quatf qcmd = qdred * qmix;											// qcmd	: final mixed desired attitude for calculating the error
+	Quatf qcmd = qdred * qmix;											// qcmd	: final mixed desired attitude for the controller
 
-	Quatf qe = q * qcmd.inversed();										// qe : attitude error				= rotation from the actual attitude to the final mixed desired attitude
+	qe = q * qcmd.inversed();
 	return 2.f * sign(qe(0)) * Vector3f(qe(1),qe(2),qe(3));				// using the sin(alpha/2) scaled rotation axis as correction term plus taking care of the ambiguity of a quaternion
 }
 
@@ -161,13 +177,41 @@ void BlockMControl::rateController_original() {
 	math::Vector<3> _control_output = _rate_p.emult(rates_err) + _rate_d.emult(_rates_prev - rates) / getDt();
 	_rates_prev = rates;
 
-	publishMoment(Vector3f(_control_output.data));
+	publishMoment(Vector3f(_control_output.data), _joystick[3]*1.4f-0.4f);
 }
 
-void BlockMControl::publishMoment(matrix::Vector3f moment) {
-	float thrust = _sub_vehicle_attitude_setpoint.get().thrust;
-	thrust = _joystick[3]*1.4f-0.4f;
+Quatf BlockMControl::FtoQ(Vector3f F, float yaw) {
+	printf("-------------\n");
+	F.normalize();
 
+	Vector3f z(0,0,1);
+	float alpha = acosf(z.dot(F));
+	Vector3f axis = z % F;
+	axis.normalize();
+	Quatf qred;
+	qred.from_axis_angle(axis, alpha);
+	//printf("alpha: %f\n", (double)alpha);
+
+	Quatf qyaw;
+	qyaw.from_axis_angle(z, yaw);
+
+	return qyaw * qred;
+}
+
+Dcmf BlockMControl::FtoR(Vector3f F, float yaw) {
+	F.normalize();
+	Vector3f x_C_des(cos(yaw), sin(yaw), 0);
+	Vector3f y_B_des = F % x_C_des;
+	y_B_des.normalize();
+	Vector3f x_B_des = y_B_des % F;
+	Dcmf R1;
+	R1.set(x_B_des,0,0);
+	R1.set(y_B_des,0,1);
+	R1.set(F,0,2);
+	return R1;
+}
+
+void BlockMControl::publishMoment(matrix::Vector3f moment, float thrust) {
 	for(int i = 0; i < 3; i++)
 		_pub_actuator_controls.get().control[i] = PX4_ISFINITE(moment(i)) ? moment(i) : 0;
 	_pub_actuator_controls.get().control[3] = PX4_ISFINITE(thrust) && thrust > 0 ? thrust : 0;
