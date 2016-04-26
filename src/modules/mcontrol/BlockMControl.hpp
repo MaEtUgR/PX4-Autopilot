@@ -3,6 +3,10 @@
  * @author Matthias Grob <maetugr@gmail.com>
  *
  * Nonlinear Quadrotor Controller (master thesis)
+ * quaternion attitude control is implemented mostly according to:
+ *   Nonlinear Quadrocopter Attitude Control
+ *   Dario Brescianini, markus Hehn, Raffaello D'Andrea
+ *   IDSC ETH Zürich
  */
 
 #pragma once

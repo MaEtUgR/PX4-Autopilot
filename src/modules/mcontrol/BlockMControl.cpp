@@ -82,14 +82,11 @@ void BlockMControl::Controller() {
 		_Rd = Dcmf(euler);
 	}
 
-	/*Vector3f F(&_sub_force_setpoint.get().x);
-	F = -F;
-	if(F.norm() < 0.001f)
-		F(2) = 0.001f;*/
+	Vector3f F(&_sub_force_setpoint.get().x);
 	/*_Rd = FtoR(F, _sub_force_setpoint.get().yaw_rate);
 	_qd = Quatf(_Rd);*/
-	//_qd = FtoQ(F, _sub_force_setpoint.get().yaw_rate);
-	//_qd.print();
+	_qd = FtoQ(F, _sub_force_setpoint.get().yaw_rate);
+	_qd.print();
 
 	Vector3f e_R;
 	if(1)
@@ -98,7 +95,7 @@ void BlockMControl::Controller() {
 		e_R = ControllerR();
 
 	Vector3f O(&_sub_control_state.get().roll_rate);									// O   : rate				= gyroscope measurement from uORB topic
-	Vector3f e_O = O - Vector3f(0,0,_joystick[2]*2);									// e_O : rate error
+	Vector3f e_O = O - Vector3f(0,0,0/*_joystick[2]*2*/);									// e_O : rate error
 
 	Vector3f O_d = (O - _O_prev) / getDt();												// O_d: derivative of the rate TODO: estimate angular acceleration
 	_O_prev = O;
@@ -113,14 +110,14 @@ void BlockMControl::Controller() {
 
 	float thrust = _sub_vehicle_attitude_setpoint.get().thrust;
 	thrust = _joystick[3]*1.4f-0.4f;
-	//thrust = F.norm()*1.4f-0.4f;
+	thrust = F.norm()*1.4f-0.4f;	// TODO: throttle should be smaller if we are not aligned with attitude yet
 	publishMoment(m, thrust);
 }
 
 Vector3f BlockMControl::ControllerR() {
 	Matrix3f R(_sub_vehicle_attitude.get().R); 											// R   : attitude			= estimated attitude from uORB topic
 	Matrix3f Rd(_sub_vehicle_attitude_setpoint.get().R_body);							// Rd  : desired attitude	= desired attitude from uORB topic
-	Rd = _Rd;
+	Rd = _Rd;	// TODO: set point override have to be taken out!
 
 	Vector3f R_z(R(0, 2), R(1, 2), R(2, 2));		// reduced attitude control
 	Vector3f Rd_z(Rd(0, 2), Rd(1, 2), Rd(2, 2));
@@ -131,7 +128,7 @@ Vector3f BlockMControl::ControllerR() {
 Vector3f BlockMControl::ControllerQ() {									// ATTENTION: quaternions are defined differently than in the paper they are complex conjugates/reverse rotations compared to the paper
 	Quatf q(_sub_vehicle_attitude.get().q); 							// q   : attitude					= estimated attitude from uORB topic
 	Quatf qd(_sub_vehicle_attitude_setpoint.get().q_d);					// qd  : desired attitude			= desired attitude from uORB topic
-	qd = _qd;
+	qd = _qd;	// TODO: set point override have to be taken out!
 
 	Quatf qe = q * qd.inversed();										// full quaternion attitude control
 	if(qe(0) < 0) {														// qe : attitude error				= rotation from the actual attitude to the desired attitude
@@ -181,16 +178,19 @@ void BlockMControl::rateController_original() {
 }
 
 Quatf BlockMControl::FtoQ(Vector3f F, float yaw) {
-	printf("-------------\n");
+	if(F.norm() < 1e-4f)
+		return Quatf();	// if no desired force stay level TODO: we can just stay how we are if no force desired
 	F.normalize();
 
 	Vector3f z(0,0,1);
 	float alpha = acosf(z.dot(F));
 	Vector3f axis = z % F;
-	axis.normalize();
+	if(axis.norm() < 1e-6f)
+		axis = Vector3f(1,0,0); // we want to be exactly level then the angle is anyways very small or exactly 180 flipped then the angle is pi
+	else
+		axis.normalize();
 	Quatf qred;
 	qred.from_axis_angle(axis, alpha);
-	//printf("alpha: %f\n", (double)alpha);
 
 	Quatf qyaw;
 	qyaw.from_axis_angle(z, yaw);
