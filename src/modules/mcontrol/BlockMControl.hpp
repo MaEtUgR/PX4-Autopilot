@@ -18,6 +18,7 @@
 #include <uORB/topics/vehicle_force_setpoint.h>
 #include <uORB/topics/vehicle_attitude_setpoint.h>
 #include <uORB/topics/manual_control_setpoint.h>
+#include <uORB/topics/sensor_combined.h>
 
 class BlockMControl : public control::SuperBlock {
 public:
@@ -27,9 +28,11 @@ private:
 	uORB::Subscription<control_state_s>				_sub_control_state;
 	uORB::Subscription<vehicle_attitude_s>			_sub_vehicle_attitude;
 	uORB::Subscription<vehicle_force_setpoint_s>	_sub_force_setpoint;
-	uORB::Subscription<manual_control_setpoint_s>	_sub_manual_control_setpoint;
+	uORB::Subscription<manual_control_setpoint_s>	_sub_manual_control_setpoint; // TODO: joystick input still needed?
 	uORB::Subscription<vehicle_attitude_setpoint_s>	_sub_vehicle_attitude_setpoint;
 	uORB::Publication<actuator_controls_s>			_pub_actuator_controls;
+
+	uORB::Subscription<sensor_combined_s>	_sub_sensor_combined;
 
 	bool _simulation;
 
@@ -42,16 +45,19 @@ private:
 	void get_joystick_data();
 	float _joystick[4];
 
+	void Estimator();
+	matrix::Quatf _q;
+	matrix::Quatf _qr;
+
 	void Controller();
 	matrix::Quatf _qd;
 	matrix::Matrix3f _Rd;
+	float _yaw;
 
 	matrix::Vector3f ControllerQ();									// quaternion based attitude controller
 	template<typename T> int sign(T val) {return (T(0) < val) - (val < T(0));}	// type-safe signum function (http://stackoverflow.com/questions/1903954/is-there-a-standard-sign-function-signum-sgn-in-c-c)
 
 	matrix::Vector3f ControllerR();									// matrix based attitude controller
-	matrix::Matrix3f _Rd_prev;
-	matrix::Vector3f _Od_prev;
 	matrix::Vector3f _O_prev;
 
 	void rateController_original();									// the original rate controller as a reference

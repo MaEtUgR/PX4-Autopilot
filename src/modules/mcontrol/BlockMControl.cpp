@@ -17,13 +17,13 @@ BlockMControl::BlockMControl(bool simulation) :
 		_sub_manual_control_setpoint(ORB_ID(manual_control_setpoint), 0, 0, &getSubscriptions()),
 		_sub_vehicle_attitude_setpoint(ORB_ID(vehicle_attitude_setpoint), 0, 0, &getSubscriptions()),
 		_pub_actuator_controls(ORB_ID(actuator_controls_0), -1, &getPublications()),
-		_dt_timeStamp(0),
+		_sub_sensor_combined(ORB_ID(sensor_combined), 0, 0, &getSubscriptions()),
+		_dt_timeStamp(hrt_absolute_time()),
 		_joystick{0,0,0,0}
 {
 	_control_state_Poll.fd = _sub_control_state.getHandle();
 	_control_state_Poll.events = POLLIN;
-	_Rd_prev.setZero();
-	_Od_prev.setZero();
+	_yaw = 0;
 
 	_simulation = simulation;				// TODO: distinction between simulation and reality should not be needed, inputs have to get the same and parameters have to be set differently
 }
@@ -37,6 +37,7 @@ void BlockMControl::update() {
 	//printf("Joystick: % .1f % .1f % .1f % .1f\n", (double)_joystick[0], (double)_joystick[1], (double)_joystick[2], (double)_joystick[3]);
 	//printf("Kill: %d\n", _sub_manual_control_setpoint.get().kill_switch);
 
+	Estimator();
 	Controller();
 	//rateController_original();
 }
@@ -71,6 +72,57 @@ void BlockMControl::get_joystick_data() {
 	}
 }
 
+void BlockMControl::Estimator() {
+	Quatf q(_sub_vehicle_attitude.get().q);
+
+	//Vector3f O(&_sub_control_state.get().roll_rate);
+	Vector3f O2(_sub_sensor_combined.get().gyro_rad_s);
+	Vector3f A(_sub_sensor_combined.get().accelerometer_m_s2);
+	Vector3f M(_sub_sensor_combined.get().magnetometer_ga);
+
+	/*Quatf qg(0, O(0), O(1), O(2));			// taylor approximative update with gyro data (better not to use, significant with 40Hz)
+	Quatf qdot = qg * _qr * 0.5f * getDt();
+	_qr += qdot;
+	_qr.normalize();*/
+
+	Vector3f M_ref(0.1250, 0, 0.3980); // reference magnetic vector in world frame (AIT lab)
+	Vector3f M_ref_body = _q.apply(M_ref); // reference magnetic vector rotated to body frame
+	if(M.norm() > 0)
+		M.normalize();
+	M_ref_body.normalize();
+	Vector3f wM = M % M_ref_body;
+
+	Vector3f A_ref(0, 0, -9.81); // reference acceleration vector in world frame when NOT moving! (AIT lab)
+	Vector3f A_ref_body = _q.apply(A_ref); // reference acceleration vector rotated to body frame
+	if(A.norm() > 0)
+		A.normalize();
+	A_ref_body.normalize();
+	Vector3f wA = A % A_ref_body;
+
+	Quatf qrot;
+	qrot.from_axis_angle((O2+5.0f*(wM+wA)) * getDt());
+	_q = qrot * _q;
+	_q.normalize();
+
+
+	//Dcmf R(_q);
+	Dcmf R(_sub_vehicle_attitude.get().R);
+
+	static int counter = 0;
+	counter++;
+	if (counter % 40 == 0) {
+		printf("%.3f,%.3f,%.3f,%.3f,", (double)_q(0), (double)_q(1),(double)_q(2),(double)_q(3));
+		//printf("%.3f,%.3f,%.3f,", (double)O(0), (double)O(1),(double)O(2));
+		printf("%.3f,%.3f,%.3f,", (double)A_ref_body(0), (double)A_ref_body(1),(double)A_ref_body(2));
+		//printf("%.3f,%.3f,%.3f,", (double)wA(0), (double)wA(1),(double)wA(2));
+		printf("%.3f,%.3f,%.3f,", (double)A(0), (double)A(1),(double)A(2));
+		printf("%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", (double)R._data[0][0], (double)R._data[0][1],(double)R._data[0][2], (double)R._data[1][0], (double)R._data[1][1],(double)R._data[1][2], (double)R._data[2][0], (double)R._data[2][1],(double)R._data[2][2]);
+		//printf("%.3f,%.3f,%.3f,%.3f,", (double)_qr(0), (double)_qr(1),(double)_qr(2),(double)_qr(3)); // taylor approx
+		//printf("%.3f,%.3f,%.3f,%.3f,", (double)q(0), (double)q(1),(double)q(2),(double)q(3));
+
+	}
+}
+
 void BlockMControl::Controller() {
 	Eulerf euler(_joystick[0]/1.5f, _joystick[1]/1.5f, 0/*_joystick[2]*1.5f*/);				// joystick euler attitude set point TODO: better translation through vector
 	if(_joystick[3] < 0) {
@@ -83,10 +135,8 @@ void BlockMControl::Controller() {
 	}
 
 	Vector3f F(&_sub_force_setpoint.get().x);
-	/*_Rd = FtoR(F, _sub_force_setpoint.get().yaw_rate);
-	_qd = Quatf(_Rd);*/
-	_qd = FtoQ(F, _sub_force_setpoint.get().yaw_rate);
-	_qd.print();
+	_yaw += _sub_force_setpoint.get().yaw_rate * getDt();
+	_qd = FtoQ(F, _yaw);
 
 	Vector3f e_R;
 	if(1)
@@ -102,7 +152,7 @@ void BlockMControl::Controller() {
 
 	Vector3f m;
 	if(_simulation)
-		m = -0.60f * e_O -2.0f * e_R -0.004f * O_d;										// m   : angular moment to apply to quad
+		m = -0.60f * e_O -3.0f * e_R -0.004f * O_d;										// m   : angular moment to apply to quad
 	else {
 		m = -0.06f * e_O -0.2f * e_R -0.004f * O_d;
 		m = m.emult(Vector3f(1,1,1));															// draft for using different gains depending on roll, pitch or yaw
@@ -128,6 +178,8 @@ Vector3f BlockMControl::ControllerR() {
 Vector3f BlockMControl::ControllerQ() {									// ATTENTION: quaternions are defined differently than in the paper they are complex conjugates/reverse rotations compared to the paper
 	Quatf q(_sub_vehicle_attitude.get().q); 							// q   : attitude					= estimated attitude from uORB topic
 	Quatf qd(_sub_vehicle_attitude_setpoint.get().q_d);					// qd  : desired attitude			= desired attitude from uORB topic
+	//printf("diff");(q-_q).print();
+	q = _q;
 	qd = _qd;	// TODO: set point override have to be taken out!
 
 	Quatf qe = q * qd.inversed();										// full quaternion attitude control

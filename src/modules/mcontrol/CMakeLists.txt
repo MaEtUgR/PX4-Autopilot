@@ -1,5 +1,5 @@
 if(${OS} STREQUAL "nuttx")
-	list(APPEND MODULE_CFLAGS -Wframe-larger-than=1024)
+	list(APPEND MODULE_CFLAGS -Wframe-larger-than=2048)
 elseif(${OS} STREQUAL "posix")
 	list(APPEND MODULE_CFLAGS -Wno-error)
 endif()
@@ -10,7 +10,7 @@ add_definitions(-DUSE_MATRIX_LIB)
 px4_add_module(
 	MODULE modules__mcontrol
 	MAIN mcontrol
-	STACK 1024
+	STACK 2048
 	COMPILE_FLAGS ${MODULE_CFLAGS}
 	SRCS
 		mcontrol_main.cpp
