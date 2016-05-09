@@ -24,6 +24,7 @@ BlockMControl::BlockMControl(bool simulation) :
 	_control_state_Poll.fd = _sub_control_state.getHandle();
 	_control_state_Poll.events = POLLIN;
 	_yaw = 0;
+	_estimator_inited = false;
 
 	_simulation = simulation;				// TODO: distinction between simulation and reality should not be needed, inputs have to get the same and parameters have to be set differently
 }
@@ -72,11 +73,38 @@ void BlockMControl::get_joystick_data() {
 	}
 }
 
+bool BlockMControl::EstimatorInit() {
+	Vector3f A(_sub_sensor_combined.get().accelerometer_m_s2);
+	Vector3f M(_sub_sensor_combined.get().magnetometer_ga);
+	if(!(A.norm() > 0) || !(M.norm() > 0)) return false;
+	A.normalize();		// we need a rotation matrix with determinant 1 so we can already normalize the input vectors
+	M.normalize();
+
+	// Rotation matrix can be easily constructed from acceleration and mag field vectors
+	Vector3f k = -A;	// 'k' is Earth Z axis (Down) unit vector in body frame
+	Vector3f j = k % M;	// 'j' is Earth Y axis (East) unit vector in body frame, orthogonal with 'k' and 'M'
+	j.normalize();		// A and M are not orthogonal -> we still need to normalize here
+	Vector3f i = j % k;	// 'i' is Earth X axis (North) unit vector in body frame, orthogonal with 'j' and 'k'
+
+	Dcmf R;				// Fill rotation matrix
+	R.setCol(0, i);
+	R.setCol(1, j);
+	R.setCol(2, k);
+
+	_q = Quatf(R.T());		// Convert to quaternion
+	return true;
+}
+
 void BlockMControl::Estimator() {
+	if(!_estimator_inited) {
+		_estimator_inited = EstimatorInit();
+		return;
+	}
+
 	Quatf q(_sub_vehicle_attitude.get().q);
 
-	//Vector3f O(&_sub_control_state.get().roll_rate);
-	Vector3f O2(_sub_sensor_combined.get().gyro_rad_s);
+	//Vector3f O2(&_sub_control_state.get().roll_rate); // why is this different?
+	Vector3f O(_sub_sensor_combined.get().gyro_rad_s);
 	Vector3f A(_sub_sensor_combined.get().accelerometer_m_s2);
 	Vector3f M(_sub_sensor_combined.get().magnetometer_ga);
 
@@ -100,7 +128,7 @@ void BlockMControl::Estimator() {
 	Vector3f wA = A % A_ref_body;
 
 	Quatf qrot;
-	qrot.from_axis_angle((O2+5.0f*(wM+wA)) * getDt());
+	qrot.from_axis_angle((O+wM+wA) * getDt());
 	_q = qrot * _q;
 	_q.normalize();
 
@@ -112,11 +140,11 @@ void BlockMControl::Estimator() {
 	counter++;
 	if (counter % 40 == 0) {
 		printf("%.3f,%.3f,%.3f,%.3f,", (double)_q(0), (double)_q(1),(double)_q(2),(double)_q(3));
+		printf("%.3f,%.3f,%.3f,%.3f,", (double)q(0), (double)q(1),(double)q(2),(double)q(3));
 		//printf("%.3f,%.3f,%.3f,", (double)O(0), (double)O(1),(double)O(2));
-		printf("%.3f,%.3f,%.3f,", (double)A_ref_body(0), (double)A_ref_body(1),(double)A_ref_body(2));
+		printf("%.3f,%.3f,%.3f,", (double)M_ref_body(0), (double)M_ref_body(1),(double)M_ref_body(2));
 		//printf("%.3f,%.3f,%.3f,", (double)wA(0), (double)wA(1),(double)wA(2));
-		printf("%.3f,%.3f,%.3f,", (double)A(0), (double)A(1),(double)A(2));
-		printf("%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f,%.3f\n", (double)R._data[0][0], (double)R._data[0][1],(double)R._data[0][2], (double)R._data[1][0], (double)R._data[1][1],(double)R._data[1][2], (double)R._data[2][0], (double)R._data[2][1],(double)R._data[2][2]);
+		printf("%.3f,%.3f,%.3f\n", (double)M(0), (double)M(1),(double)M(2));
 		//printf("%.3f,%.3f,%.3f,%.3f,", (double)_qr(0), (double)_qr(1),(double)_qr(2),(double)_qr(3)); // taylor approx
 		//printf("%.3f,%.3f,%.3f,%.3f,", (double)q(0), (double)q(1),(double)q(2),(double)q(3));
 
@@ -179,7 +207,7 @@ Vector3f BlockMControl::ControllerQ() {									// ATTENTION: quaternions are de
 	Quatf q(_sub_vehicle_attitude.get().q); 							// q   : attitude					= estimated attitude from uORB topic
 	Quatf qd(_sub_vehicle_attitude_setpoint.get().q_d);					// qd  : desired attitude			= desired attitude from uORB topic
 	//printf("diff");(q-_q).print();
-	q = _q;
+	//q = _q;
 	qd = _qd;	// TODO: set point override have to be taken out!
 
 	Quatf qe = q * qd.inversed();										// full quaternion attitude control

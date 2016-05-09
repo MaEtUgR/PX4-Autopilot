@@ -45,6 +45,9 @@ private:
 	void get_joystick_data();
 	float _joystick[4];
 
+	bool EstimatorInit();
+	bool _estimator_inited;
+
 	void Estimator();
 	matrix::Quatf _q;
 	matrix::Quatf _qr;
