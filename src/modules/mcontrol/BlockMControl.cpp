@@ -7,6 +7,8 @@
 
 #include "BlockMControl.hpp"
 
+#define SQRT2           0.7071067811865f
+
 using namespace matrix;
 
 BlockMControl::BlockMControl(bool simulation) :
@@ -16,6 +18,7 @@ BlockMControl::BlockMControl(bool simulation) :
 		_sub_force_setpoint(ORB_ID(vehicle_force_setpoint), 0, 0, &getSubscriptions()),
 		_sub_manual_control_setpoint(ORB_ID(manual_control_setpoint), 0, 0, &getSubscriptions()),
 		_sub_vehicle_attitude_setpoint(ORB_ID(vehicle_attitude_setpoint), 0, 0, &getSubscriptions()),
+		_sub_actuator_armed(ORB_ID(actuator_armed), 0, 0, &getSubscriptions()),
 		_pub_actuator_controls(ORB_ID(actuator_controls_0), -1, &getPublications()),
 		_sub_sensor_combined(ORB_ID(sensor_combined), 0, 0, &getSubscriptions()),
 		_dt_timeStamp(hrt_absolute_time()),
@@ -26,7 +29,16 @@ BlockMControl::BlockMControl(bool simulation) :
 	_yaw = 0;
 	_estimator_inited = false;
 
-	_simulation = simulation;				// TODO: distinction between simulation and reality should not be needed, inputs have to get the same and parameters have to be set differently
+	const char *dev = PWM_OUTPUT0_DEVICE_PATH;	// file descriptor to command PWM set points
+	_pwm_fd = open(dev, 0);
+	if (_pwm_fd < 0) err(1, "can't open %s", dev);
+
+	_simulation = simulation;					// TODO: distinction between simulation and reality should not be needed, inputs have to get the same and parameters have to be set differently
+}
+
+BlockMControl::~BlockMControl() {
+	if (_pwm_fd != -1) px4_close(_pwm_fd);		// close file descriptor again
+	publishMoment(Vector3f(0,0,0),0);			// send a last actuator control output to the px4io otherwise it goes to failsafe mode and the motors start spinning!
 }
 
 void BlockMControl::update() {
@@ -39,8 +51,9 @@ void BlockMControl::update() {
 	//printf("Kill: %d\n", _sub_manual_control_setpoint.get().kill_switch);
 
 	Estimator();
-	Controller();
-	//rateController_original();
+	//Controller();
+	rateController_original();
+	PWM();
 }
 
 bool BlockMControl::poll_control_state() {
@@ -73,9 +86,7 @@ void BlockMControl::get_joystick_data() {
 	}
 }
 
-bool BlockMControl::EstimatorInit() {
-	Vector3f A(_sub_sensor_combined.get().accelerometer_m_s2);
-	Vector3f M(_sub_sensor_combined.get().magnetometer_ga);
+bool BlockMControl::EstimatorInit(Vector3f A, Vector3f M) {
 	if(!(A.norm() > 0) || !(M.norm() > 0)) return false;
 	A.normalize();		// we need a rotation matrix with determinant 1 so we can already normalize the input vectors
 	M.normalize();
@@ -91,54 +102,42 @@ bool BlockMControl::EstimatorInit() {
 	R.setCol(1, j);
 	R.setCol(2, k);
 
-	_q = Quatf(R.T());		// Convert to quaternion
+	_q = Quatf(R.T());	// Convert to quaternion
 	return true;
 }
 
 void BlockMControl::Estimator() {
-	if(!_estimator_inited) {
-		_estimator_inited = EstimatorInit();
-		return;
-	}
-
-	Quatf q(_sub_vehicle_attitude.get().q);
-
-	//Vector3f O2(&_sub_control_state.get().roll_rate); // why is this different?
 	Vector3f O(_sub_sensor_combined.get().gyro_rad_s);
+	//Vector3f O2(&_sub_control_state.get().roll_rate); // why is this different?
 	Vector3f A(_sub_sensor_combined.get().accelerometer_m_s2);
 	Vector3f M(_sub_sensor_combined.get().magnetometer_ga);
 
-	/*Quatf qg(0, O(0), O(1), O(2));			// taylor approximative update with gyro data (better not to use, significant with 40Hz)
-	Quatf qdot = qg * _qr * 0.5f * getDt();
-	_qr += qdot;
-	_qr.normalize();*/
+	if(!_estimator_inited) _estimator_inited = EstimatorInit(A,M);
 
-	Vector3f M_ref(0.1250, 0, 0.3980); // reference magnetic vector in world frame (AIT lab)
-	Vector3f M_ref_body = _q.apply(M_ref); // reference magnetic vector rotated to body frame
-	if(M.norm() > 0)
-		M.normalize();
+	Vector3f M_ref(0.1250, 0, 0.3980);			// reference magnetic vector in world frame (AIT lab)
+	Vector3f M_ref_body = _q.apply(M_ref);		// reference magnetic vector rotated to body frame
+	if(M.norm() > 0) M.normalize();
 	M_ref_body.normalize();
 	Vector3f wM = M % M_ref_body;
 
-	Vector3f A_ref(0, 0, -9.81); // reference acceleration vector in world frame when NOT moving! (AIT lab)
-	Vector3f A_ref_body = _q.apply(A_ref); // reference acceleration vector rotated to body frame
-	if(A.norm() > 0)
-		A.normalize();
+	Vector3f A_ref(0, 0, -9.81); 				// reference acceleration vector in world frame when NOT moving! (AIT lab)
+	Vector3f A_ref_body = _q.apply(A_ref);		// reference acceleration vector rotated to body frame
+	if(A.norm() > 0) A.normalize();
 	A_ref_body.normalize();
 	Vector3f wA = A % A_ref_body;
 
 	Quatf qrot;
-	qrot.from_axis_angle((O+wM+wA) * getDt());
+	qrot.from_axis_angle((O+wM/*+wA*/) * getDt());	// mixing the gyro prediction and the corrections with the fixed vectors
 	_q = qrot * _q;
 	_q.normalize();
 
 
-	//Dcmf R(_q);
+	Quatf q(_sub_vehicle_attitude.get().q);	// TODO: for debugging purpouse only
 	Dcmf R(_sub_vehicle_attitude.get().R);
 
 	static int counter = 0;
 	counter++;
-	if (counter % 40 == 0) {
+	/*if (counter % 40 == 0) {
 		printf("%.3f,%.3f,%.3f,%.3f,", (double)_q(0), (double)_q(1),(double)_q(2),(double)_q(3));
 		printf("%.3f,%.3f,%.3f,%.3f,", (double)q(0), (double)q(1),(double)q(2),(double)q(3));
 		//printf("%.3f,%.3f,%.3f,", (double)O(0), (double)O(1),(double)O(2));
@@ -147,8 +146,7 @@ void BlockMControl::Estimator() {
 		printf("%.3f,%.3f,%.3f\n", (double)M(0), (double)M(1),(double)M(2));
 		//printf("%.3f,%.3f,%.3f,%.3f,", (double)_qr(0), (double)_qr(1),(double)_qr(2),(double)_qr(3)); // taylor approx
 		//printf("%.3f,%.3f,%.3f,%.3f,", (double)q(0), (double)q(1),(double)q(2),(double)q(3));
-
-	}
+	}*/
 }
 
 void BlockMControl::Controller() {
@@ -173,7 +171,8 @@ void BlockMControl::Controller() {
 		e_R = ControllerR();
 
 	Vector3f O(&_sub_control_state.get().roll_rate);									// O   : rate				= gyroscope measurement from uORB topic
-	Vector3f e_O = O - Vector3f(0,0,0/*_joystick[2]*2*/);									// e_O : rate error
+	Vector3f e_O = O - Vector3f(_joystick[0],_joystick[1],_joystick[2])*2;
+	//Vector3f e_O = O - Vector3f(0,0,0);													// e_O : rate error
 
 	Vector3f O_d = (O - _O_prev) / getDt();												// O_d: derivative of the rate TODO: estimate angular acceleration
 	_O_prev = O;
@@ -182,33 +181,37 @@ void BlockMControl::Controller() {
 	if(_simulation)
 		m = -0.60f * e_O -3.0f * e_R -0.004f * O_d;										// m   : angular moment to apply to quad
 	else {
-		m = -0.06f * e_O -0.2f * e_R -0.004f * O_d;
+		m = -0.05f * e_O /*-0.2f * e_R -0.004f * O_d*/;
 		m = m.emult(Vector3f(1,1,1));															// draft for using different gains depending on roll, pitch or yaw
 	}
 
 	float thrust = _sub_vehicle_attitude_setpoint.get().thrust;
-	thrust = _joystick[3]*1.4f-0.4f;
-	thrust = F.norm()*1.4f-0.4f;	// TODO: throttle should be smaller if we are not aligned with attitude yet
+	if(_simulation) {
+		thrust = _joystick[3]*1.4f-0.4f;
+		thrust = F.norm()*1.4f-0.4f;	// TODO: throttle should be smaller if we are not aligned with attitude yet
+	}
+
 	publishMoment(m, thrust);
 }
 
 Vector3f BlockMControl::ControllerR() {
-	Matrix3f R(_sub_vehicle_attitude.get().R); 											// R   : attitude			= estimated attitude from uORB topic
-	Matrix3f Rd(_sub_vehicle_attitude_setpoint.get().R_body);							// Rd  : desired attitude	= desired attitude from uORB topic
+	Matrix3f R(_sub_vehicle_attitude.get().R); 							// R   : attitude			= estimated attitude from uORB topic
+	Matrix3f Rd(_sub_vehicle_attitude_setpoint.get().R_body);			// Rd  : desired attitude	= desired attitude from uORB topic
 	Rd = _Rd;	// TODO: set point override have to be taken out!
 
-	Vector3f R_z(R(0, 2), R(1, 2), R(2, 2));		// reduced attitude control
+	Vector3f R_z(R(0, 2), R(1, 2), R(2, 2));							// reduced attitude control
 	Vector3f Rd_z(Rd(0, 2), Rd(1, 2), Rd(2, 2));
 	return R.T() * (Rd_z % R_z);
-	//return 1/2.f * ((Dcmf)(Rd.T() * R - R.T() * Rd)).vee();				// e_R : attitude error		= 1/2 * (Rd' R - R' * Rd)^V
+	//return 1/2.f * ((Dcmf)(Rd.T() * R - R.T() * Rd)).vee();			// e_R : full attitude error		= 1/2 * (Rd' R - R' * Rd)^V
 }
 
 Vector3f BlockMControl::ControllerQ() {									// ATTENTION: quaternions are defined differently than in the paper they are complex conjugates/reverse rotations compared to the paper
 	Quatf q(_sub_vehicle_attitude.get().q); 							// q   : attitude					= estimated attitude from uORB topic
 	Quatf qd(_sub_vehicle_attitude_setpoint.get().q_d);					// qd  : desired attitude			= desired attitude from uORB topic
-	//printf("diff");(q-_q).print();
-	//q = _q;
-	qd = _qd;	// TODO: set point override have to be taken out!
+	q = _q;
+
+	if (_simulation)
+		qd = _qd;	// TODO: set point override have to be taken out!
 
 	Quatf qe = q * qd.inversed();										// full quaternion attitude control
 	if(qe(0) < 0) {														// qe : attitude error				= rotation from the actual attitude to the desired attitude
@@ -227,7 +230,7 @@ Vector3f BlockMControl::ControllerQ() {									// ATTENTION: quaternions are de
 	Quatf qered(cos(alpha/2.f), qered13(0), qered13(1), qered13(2));	// build up the quaternion that does this rotation
 	Quatf qdred = q * qered;											// qdred: reduced desired attitude	= rotation that's needed to align the z axis but seen from the world frame
 
-	float p = 0.4f;		// TODO: parameter!								// mixing reduced and full attitude control
+	float p = 0.4f;		// TODO: parameter for this!					// mixing reduced and full attitude control
 	Quatf qmix = qdred.inversed()*qd;									// qmix	: the roatation from full attitude to reduced attitude correction -> only body yaw roatation -> qmix = [cos(alpha_mix/2) 0 0 sin(alpha_mix/2)]
 	float alphahalf = asinf(qmix(3));									// calculate the angle alpha/2 that the full attitude controller would do more than the reduced in body yaw direction
 	qmix(0) = cosf(p*alphahalf);										// reconstruct a quaternion that scales the body yaw rotation angle error by p = K_yaw / K_roll,pitch
@@ -254,12 +257,14 @@ void BlockMControl::rateController_original() {
 	math::Vector<3> _control_output = _rate_p.emult(rates_err) + _rate_d.emult(_rates_prev - rates) / getDt();
 	_rates_prev = rates;
 
-	publishMoment(Vector3f(_control_output.data), _joystick[3]*1.4f-0.4f);
+	//publishMoment(Vector3f(_control_output.data), _joystick[3]*1.4f-0.4f);
+	Mixer(Vector3f(_control_output.data), _joystick[3]);
 }
 
 Quatf BlockMControl::FtoQ(Vector3f F, float yaw) {
 	if(F.norm() < 1e-4f)
-		return Quatf();	// if no desired force stay level TODO: we can just stay how we are if no force desired
+		//return Quatf();	// if no desired force stay level TODO: we can just stay how we are if no force desired
+		return _q;
 	F.normalize();
 
 	Vector3f z(0,0,1);
@@ -296,4 +301,30 @@ void BlockMControl::publishMoment(matrix::Vector3f moment, float thrust) {
 		_pub_actuator_controls.get().control[i] = PX4_ISFINITE(moment(i)) ? moment(i) : 0;
 	_pub_actuator_controls.get().control[3] = PX4_ISFINITE(thrust) && thrust > 0 ? thrust : 0;
 	_pub_actuator_controls.update();
+}
+
+void BlockMControl::Mixer(matrix::Vector3f moment, float thrust) {
+	if(_sub_actuator_armed.get().armed) {	// check for system to be armed for safety reasons
+		_motors(0) = thrust - SQRT2*moment(0) + SQRT2*moment(1) + moment(2);
+		_motors(1) = thrust + SQRT2*moment(0) - SQRT2*moment(1) + moment(2);
+		_motors(2) = thrust + SQRT2*moment(0) + SQRT2*moment(1) - moment(2);
+		_motors(3) = thrust - SQRT2*moment(0) - SQRT2*moment(1) - moment(2);
+	} else {
+		for(int i = 0; i < 4; i++)
+			_motors(i) = 0;
+	}
+}
+
+void BlockMControl::PWM() {
+	for(int i = 0; i < 4; i++)
+		setMotorPWM(i, _motors(i));
+}
+
+void BlockMControl::setMotorPWM(int channel, float w) {
+	if(w < 0) w = 0;											// constrain the output to 0-100%
+	if(w > 1.0f) w = 1;
+	int min = 1000, max = 2000;
+	int value = min + (w * (max-min));
+	int ret = ioctl(_pwm_fd, PWM_SERVO_SET(channel), value);
+	if (ret != OK) printf("Error: PWM_SERVO_SET(%d)\n", channel);
 }

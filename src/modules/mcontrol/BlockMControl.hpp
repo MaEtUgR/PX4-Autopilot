@@ -19,10 +19,14 @@
 #include <uORB/topics/vehicle_attitude_setpoint.h>
 #include <uORB/topics/manual_control_setpoint.h>
 #include <uORB/topics/sensor_combined.h>
+#include <uORB/topics/actuator_outputs.h>
+#include <uORB/topics/actuator_armed.h>
+#include "drivers/drv_pwm_output.h"					// for PWM
 
 class BlockMControl : public control::SuperBlock {
 public:
 	BlockMControl(bool simulation);
+	~BlockMControl();
 	void update();
 private:
 	uORB::Subscription<control_state_s>				_sub_control_state;
@@ -30,6 +34,7 @@ private:
 	uORB::Subscription<vehicle_force_setpoint_s>	_sub_force_setpoint;
 	uORB::Subscription<manual_control_setpoint_s>	_sub_manual_control_setpoint; // TODO: joystick input still needed?
 	uORB::Subscription<vehicle_attitude_setpoint_s>	_sub_vehicle_attitude_setpoint;
+	uORB::Subscription<actuator_armed_s>			_sub_actuator_armed;
 	uORB::Publication<actuator_controls_s>			_pub_actuator_controls;
 
 	uORB::Subscription<sensor_combined_s>	_sub_sensor_combined;
@@ -45,7 +50,7 @@ private:
 	void get_joystick_data();
 	float _joystick[4];
 
-	bool EstimatorInit();
+	bool EstimatorInit(matrix::Vector3f A, matrix::Vector3f M);
 	bool _estimator_inited;
 
 	void Estimator();
@@ -70,4 +75,11 @@ private:
 	matrix::Dcmf FtoR(matrix::Vector3f F, float yaw);
 
 	void publishMoment(matrix::Vector3f moment, float thrust);
+
+	void Mixer(matrix::Vector3f moment, float thrust);
+	matrix::Vector<float,4> _motors;
+
+	void PWM();
+	int _pwm_fd;
+	void setMotorPWM(int channel, float power);						// channel 0-3, power 0.0-1.0
 };
