@@ -76,10 +76,10 @@ private:
 
 	void publishMoment(matrix::Vector3f moment, float thrust);
 
-	void Mixer(matrix::Vector3f moment, float thrust);
+	void Mixer(matrix::Vector<float,4> command);
 	matrix::Vector<float,4> _motors;
 
 	void PWM();
-	int _pwm_fd;
 	void setMotorPWM(int channel, float power);						// channel 0-3, power 0.0-1.0
+	int _pwm_fd;
 };

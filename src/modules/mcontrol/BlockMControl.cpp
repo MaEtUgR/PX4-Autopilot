@@ -245,20 +245,25 @@ void BlockMControl::rateController_original() {
 	math::Vector<3> rates = {_sub_control_state.get().roll_rate, _sub_control_state.get().pitch_rate, _sub_control_state.get().yaw_rate};
 	math::Vector<3> rates_sp = {_joystick[0], _joystick[1], _joystick[2]};
 
+	float P_gain = 0.0974f;//(_sub_manual_control_setpoint.get().aux1+1)/2 *0.1f;
 	math::Vector<3> _rate_p;
 	if(_simulation)
 		_rate_p = {0.48f, 0.48f, 0.15f};
-	else
-		_rate_p = {0.1f, 0.1f, 0.1f};
+	else {
+		_rate_p = {P_gain, P_gain, P_gain};
+	}
 
-	math::Vector<3> _rate_d = {0.002f, 0.002f, 0.0f};
+	float D_gain = 0.002f;//(_sub_manual_control_setpoint.get().aux2+1)/2 *0.004f;
+	math::Vector<3> _rate_d = {D_gain, D_gain, D_gain};
 
 	math::Vector<3> rates_err = rates_sp*2 - rates;
 	math::Vector<3> _control_output = _rate_p.emult(rates_err) + _rate_d.emult(_rates_prev - rates) / getDt();
 	_rates_prev = rates;
 
 	//publishMoment(Vector3f(_control_output.data), _joystick[3]*1.4f-0.4f);
-	Mixer(Vector3f(_control_output.data), _joystick[3]);
+	Vector<float,4> command(_control_output.data);
+	command(3) = _joystick[3];
+	Mixer(command);
 }
 
 Quatf BlockMControl::FtoQ(Vector3f F, float yaw) {
@@ -303,12 +308,17 @@ void BlockMControl::publishMoment(matrix::Vector3f moment, float thrust) {
 	_pub_actuator_controls.update();
 }
 
-void BlockMControl::Mixer(matrix::Vector3f moment, float thrust) {
+void BlockMControl::Mixer(matrix::Vector<float,4> command) {
+	float dh = 195, dv = 155, dd = 249.1;
+	float Mixa[16] ={-dv/dh,+1,+dv/dd,+1,
+					 +dv/dh,-1,+dv/dd,+1,
+					 +dv/dh,+1,-dv/dd,+1,
+					 -dv/dh,-1,-dv/dd,+1};
+	SquareMatrix<float,4> Mix(Mixa);
 	if(_sub_actuator_armed.get().armed) {	// check for system to be armed for safety reasons
-		_motors(0) = thrust - SQRT2*moment(0) + SQRT2*moment(1) + moment(2);
-		_motors(1) = thrust + SQRT2*moment(0) - SQRT2*moment(1) + moment(2);
-		_motors(2) = thrust + SQRT2*moment(0) + SQRT2*moment(1) - moment(2);
-		_motors(3) = thrust - SQRT2*moment(0) - SQRT2*moment(1) - moment(2);
+		_motors = Mix*command;
+		for(int i = 0; i < 4; i++)
+			_motors(i) = sqrtf(_motors(i));
 	} else {
 		for(int i = 0; i < 4; i++)
 			_motors(i) = 0;
@@ -321,7 +331,7 @@ void BlockMControl::PWM() {
 }
 
 void BlockMControl::setMotorPWM(int channel, float w) {
-	if(w < 0) w = 0;											// constrain the output to 0-100%
+	if(w < 0 || !PX4_ISFINITE(w)) w = 0;											// constrain the output to 0-100%
 	if(w > 1.0f) w = 1;
 	int min = 1000, max = 2000;
 	int value = min + (w * (max-min));
