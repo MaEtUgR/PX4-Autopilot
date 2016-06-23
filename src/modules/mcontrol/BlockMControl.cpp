@@ -7,8 +7,6 @@
 
 #include "BlockMControl.hpp"
 
-#define SQRT2           0.7071067811865f
-
 using namespace matrix;
 
 BlockMControl::BlockMControl(bool simulation) :
@@ -19,6 +17,8 @@ BlockMControl::BlockMControl(bool simulation) :
 		_sub_manual_control_setpoint(ORB_ID(manual_control_setpoint), 0, 0, &getSubscriptions()),
 		_sub_vehicle_attitude_setpoint(ORB_ID(vehicle_attitude_setpoint), 0, 0, &getSubscriptions()),
 		_sub_actuator_armed(ORB_ID(actuator_armed), 0, 0, &getSubscriptions()),
+		_sub_actuator_outputs(ORB_ID(actuator_outputs), 0, 0, &getSubscriptions()),
+		_pub_actuator_outputs(ORB_ID(actuator_outputs), -1, &getPublications()),
 		_pub_actuator_controls(ORB_ID(actuator_controls_0), -1, &getPublications()),
 		_sub_sensor_combined(ORB_ID(sensor_combined), 0, 0, &getSubscriptions()),
 		_dt_timeStamp(hrt_absolute_time()),
@@ -47,13 +47,8 @@ void BlockMControl::update() {
 	calculate_dt();
 	get_joystick_data();
 
-	//printf("Joystick: % .1f % .1f % .1f % .1f\n", (double)_joystick[0], (double)_joystick[1], (double)_joystick[2], (double)_joystick[3]);
-	//printf("Kill: %d\n", _sub_manual_control_setpoint.get().kill_switch);
-
 	Estimator();
-	//Controller();
-	rateController_original();
-	PWM();
+	Controller();
 }
 
 bool BlockMControl::poll_control_state() {
@@ -138,6 +133,9 @@ void BlockMControl::Estimator() {
 	static int counter = 0;
 	counter++;
 	/*if (counter % 40 == 0) {
+		printf("%.3f,%.3f,%.3f,%.3f\n", (double)_sub_actuator_outputs.get().output[0], (double)_sub_actuator_outputs.get().output[1],(double)_sub_actuator_outputs.get().output[2],(double)_sub_actuator_outputs.get().output[3]);
+	}*/
+	/*if (counter % 40 == 0) {
 		printf("%.3f,%.3f,%.3f,%.3f,", (double)_q(0), (double)_q(1),(double)_q(2),(double)_q(3));
 		printf("%.3f,%.3f,%.3f,%.3f,", (double)q(0), (double)q(1),(double)q(2),(double)q(3));
 		//printf("%.3f,%.3f,%.3f,", (double)O(0), (double)O(1),(double)O(2));
@@ -151,24 +149,24 @@ void BlockMControl::Estimator() {
 
 void BlockMControl::Controller() {
 	Eulerf euler(_joystick[0]/1.5f, _joystick[1]/1.5f, 0/*_joystick[2]*1.5f*/);				// joystick euler attitude set point TODO: better translation through vector
-	if(_joystick[3] < 0) {
-		_qd = /*Quatf(euler) **/ Quatf(0,1,0,0);	// flip
-		float r[] = {1,0,0, 0,-1,0, 0,0,-1};
-		_Rd = Matrix3f(r);
+	if(_simulation && _joystick[3] < 0) {
+		_qd = Quatf(0,1,0,0);	// flip
 	} else {
 		_qd = Quatf(euler);
-		_Rd = Dcmf(euler);
 	}
 
 	Vector3f F(&_sub_force_setpoint.get().x);
-	_yaw += _sub_force_setpoint.get().yaw_rate * getDt();
-	_qd = FtoQ(F, _yaw);
+	if(_simulation) {
+		_yaw += _sub_force_setpoint.get().yaw_rate * getDt();
+		_qd = FtoQ(F, _yaw);
+	}
 
-	Vector3f e_R;
-	if(1)
-		e_R = ControllerQ();
-	else
-		e_R = ControllerR();
+	Quatf q(_sub_vehicle_attitude.get().q); 							// q   : attitude					= estimated attitude from uORB topic
+	Quatf qd(_sub_vehicle_attitude_setpoint.get().q_d);					// qd  : desired attitude			= desired attitude from uORB topic
+	q = _q;
+	if (_simulation)
+		qd = _qd;
+	 Vector3f e_Q = ControllerQ(q, qd);
 
 	Vector3f O(&_sub_control_state.get().roll_rate);									// O   : rate				= gyroscope measurement from uORB topic
 	Vector3f e_O = O - Vector3f(_joystick[0],_joystick[1],_joystick[2])*2;
@@ -179,13 +177,13 @@ void BlockMControl::Controller() {
 
 	Vector3f m;
 	if(_simulation)
-		m = -0.60f * e_O -3.0f * e_R -0.004f * O_d;										// m   : angular moment to apply to quad
+		m = -0.60f * e_O -3.0f * e_Q -0.004f * O_d;										// m   : angular moment to apply to quad
 	else {
-		m = -0.05f * e_O /*-0.2f * e_R -0.004f * O_d*/;
-		m = m.emult(Vector3f(1,1,1));															// draft for using different gains depending on roll, pitch or yaw
+		m = -0.097f * e_O /*-0.2f * e_Q*/ -0.002f * O_d;
 	}
 
 	float thrust = _sub_vehicle_attitude_setpoint.get().thrust;
+	thrust = _joystick[3];
 	if(_simulation) {
 		thrust = _joystick[3]*1.4f-0.4f;
 		thrust = F.norm()*1.4f-0.4f;	// TODO: throttle should be smaller if we are not aligned with attitude yet
@@ -194,25 +192,8 @@ void BlockMControl::Controller() {
 	publishMoment(m, thrust);
 }
 
-Vector3f BlockMControl::ControllerR() {
-	Matrix3f R(_sub_vehicle_attitude.get().R); 							// R   : attitude			= estimated attitude from uORB topic
-	Matrix3f Rd(_sub_vehicle_attitude_setpoint.get().R_body);			// Rd  : desired attitude	= desired attitude from uORB topic
-	Rd = _Rd;	// TODO: set point override have to be taken out!
-
-	Vector3f R_z(R(0, 2), R(1, 2), R(2, 2));							// reduced attitude control
-	Vector3f Rd_z(Rd(0, 2), Rd(1, 2), Rd(2, 2));
-	return R.T() * (Rd_z % R_z);
-	//return 1/2.f * ((Dcmf)(Rd.T() * R - R.T() * Rd)).vee();			// e_R : full attitude error		= 1/2 * (Rd' R - R' * Rd)^V
-}
-
-Vector3f BlockMControl::ControllerQ() {									// ATTENTION: quaternions are defined differently than in the paper they are complex conjugates/reverse rotations compared to the paper
-	Quatf q(_sub_vehicle_attitude.get().q); 							// q   : attitude					= estimated attitude from uORB topic
-	Quatf qd(_sub_vehicle_attitude_setpoint.get().q_d);					// qd  : desired attitude			= desired attitude from uORB topic
-	q = _q;
-
-	if (_simulation)
-		qd = _qd;	// TODO: set point override have to be taken out!
-
+Vector3f BlockMControl::ControllerQ(Quatf q, Quatf qd) {				// q : known attitude qd : desired attitude
+	// ATTENTION: quaternions are defined differently than in the paper they are complex conjugates/reverse rotations compared to the paper
 	Quatf qe = q * qd.inversed();										// full quaternion attitude control
 	if(qe(0) < 0) {														// qe : attitude error				= rotation from the actual attitude to the desired attitude
 		qe *= -1;														// take care of the ambiguity of a quaternion
@@ -241,93 +222,64 @@ Vector3f BlockMControl::ControllerQ() {									// ATTENTION: quaternions are de
 	return 2.f * sign(qe(0)) * Vector3f(qe(1),qe(2),qe(3));				// using the sin(alpha/2) scaled rotation axis as correction term plus taking care of the ambiguity of a quaternion
 }
 
-void BlockMControl::rateController_original() {
-	math::Vector<3> rates = {_sub_control_state.get().roll_rate, _sub_control_state.get().pitch_rate, _sub_control_state.get().yaw_rate};
-	math::Vector<3> rates_sp = {_joystick[0], _joystick[1], _joystick[2]};
-
-	float P_gain = 0.0974f;//(_sub_manual_control_setpoint.get().aux1+1)/2 *0.1f;
-	math::Vector<3> _rate_p;
-	if(_simulation)
-		_rate_p = {0.48f, 0.48f, 0.15f};
-	else {
-		_rate_p = {P_gain, P_gain, P_gain};
-	}
-
-	float D_gain = 0.002f;//(_sub_manual_control_setpoint.get().aux2+1)/2 *0.004f;
-	math::Vector<3> _rate_d = {D_gain, D_gain, D_gain};
-
-	math::Vector<3> rates_err = rates_sp*2 - rates;
-	math::Vector<3> _control_output = _rate_p.emult(rates_err) + _rate_d.emult(_rates_prev - rates) / getDt();
-	_rates_prev = rates;
-
-	//publishMoment(Vector3f(_control_output.data), _joystick[3]*1.4f-0.4f);
-	Vector<float,4> command(_control_output.data);
-	command(3) = _joystick[3];
-	Mixer(command);
-}
-
 Quatf BlockMControl::FtoQ(Vector3f F, float yaw) {
 	if(F.norm() < 1e-4f)
-		//return Quatf();	// if no desired force stay level TODO: we can just stay how we are if no force desired
-		return _q;
+		return _q;						// stay in attitude we already have if no force desired
 	F.normalize();
 
 	Vector3f z(0,0,1);
 	float alpha = acosf(z.dot(F));
 	Vector3f axis = z % F;
 	if(axis.norm() < 1e-6f)
-		axis = Vector3f(1,0,0); // we want to be exactly level then the angle is anyways very small or exactly 180 flipped then the angle is pi
+		axis = Vector3f(1,0,0);			// we want to be exactly level then the angle is anyways very small or exactly 180 flipped then the angle is pi and we can choose the rotation axis (we roll here)
 	else
 		axis.normalize();
 	Quatf qred;
-	qred.from_axis_angle(axis, alpha);
+	qred.from_axis_angle(axis, alpha);	// smallest rotation to get to the force direction
 
 	Quatf qyaw;
-	qyaw.from_axis_angle(z, yaw);
+	qyaw.from_axis_angle(z, yaw);		// rotate yaw radians around the z axis
 
 	return qyaw * qred;
 }
 
-Dcmf BlockMControl::FtoR(Vector3f F, float yaw) {
-	F.normalize();
-	Vector3f x_C_des(cos(yaw), sin(yaw), 0);
-	Vector3f y_B_des = F % x_C_des;
-	y_B_des.normalize();
-	Vector3f x_B_des = y_B_des % F;
-	Dcmf R1;
-	R1.set(x_B_des,0,0);
-	R1.set(y_B_des,0,1);
-	R1.set(F,0,2);
-	return R1;
+void BlockMControl::publishMoment(Vector3f moment, float thrust) {
+	if(_simulation) {
+		for(int i = 0; i < 3; i++)	// normal output with pixhawk mixer
+			_pub_actuator_controls.get().control[i] = PX4_ISFINITE(moment(i)) ? moment(i) : 0;
+		_pub_actuator_controls.get().control[3] = PX4_ISFINITE(thrust) && thrust > 0 ? thrust : 0;
+		_pub_actuator_controls.update();
+	} else {
+		Vector<float,4> moment_thrust; moment_thrust(0) = moment(0);moment_thrust(1) = moment(1);moment_thrust(2) = moment(2);moment_thrust(3) = thrust;
+		for(int i = 0; i < 4; i++)	// TODO: take this out, original moments and thrust into the log for debugging
+			_pub_actuator_outputs.get().output[4+i] = moment_thrust(i);
+		Mixer(moment_thrust);
+	}
+
 }
 
-void BlockMControl::publishMoment(matrix::Vector3f moment, float thrust) {
-	for(int i = 0; i < 3; i++)
-		_pub_actuator_controls.get().control[i] = PX4_ISFINITE(moment(i)) ? moment(i) : 0;
-	_pub_actuator_controls.get().control[3] = PX4_ISFINITE(thrust) && thrust > 0 ? thrust : 0;
-	_pub_actuator_controls.update();
-}
-
-void BlockMControl::Mixer(matrix::Vector<float,4> command) {
-	float dh = 195, dv = 155, dd = 249.1;
+void BlockMControl::Mixer(Vector<float,4> moment_thrust) {
+	float dh = 195, dv = 155, dd = 249;
 	float Mixa[16] ={-dv/dh,+1,+dv/dd,+1,
 					 +dv/dh,-1,+dv/dd,+1,
 					 +dv/dh,+1,-dv/dd,+1,
 					 -dv/dh,-1,-dv/dd,+1};
 	SquareMatrix<float,4> Mix(Mixa);
 	if(_sub_actuator_armed.get().armed) {	// check for system to be armed for safety reasons
-		_motors = Mix*command;
+		_motors = Mix*moment_thrust;
 		for(int i = 0; i < 4; i++)
 			_motors(i) = sqrtf(_motors(i));
 	} else {
 		for(int i = 0; i < 4; i++)
 			_motors(i) = 0;
 	}
+	PWM();		// get the mixed values out to the motors
 }
 
 void BlockMControl::PWM() {
 	for(int i = 0; i < 4; i++)
 		setMotorPWM(i, _motors(i));
+	_pub_actuator_outputs.update();
 }
 
 void BlockMControl::setMotorPWM(int channel, float w) {
@@ -337,4 +289,5 @@ void BlockMControl::setMotorPWM(int channel, float w) {
 	int value = min + (w * (max-min));
 	int ret = ioctl(_pwm_fd, PWM_SERVO_SET(channel), value);
 	if (ret != OK) printf("Error: PWM_SERVO_SET(%d)\n", channel);
+	_pub_actuator_outputs.get().output[channel] = (float)value;
 }

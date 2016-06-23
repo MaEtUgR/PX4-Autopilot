@@ -19,8 +19,8 @@
 #include <uORB/topics/vehicle_attitude_setpoint.h>
 #include <uORB/topics/manual_control_setpoint.h>
 #include <uORB/topics/sensor_combined.h>
-#include <uORB/topics/actuator_outputs.h>
 #include <uORB/topics/actuator_armed.h>
+#include <uORB/topics/actuator_outputs.h>
 #include "drivers/drv_pwm_output.h"					// for PWM
 
 class BlockMControl : public control::SuperBlock {
@@ -35,6 +35,8 @@ private:
 	uORB::Subscription<manual_control_setpoint_s>	_sub_manual_control_setpoint; // TODO: joystick input still needed?
 	uORB::Subscription<vehicle_attitude_setpoint_s>	_sub_vehicle_attitude_setpoint;
 	uORB::Subscription<actuator_armed_s>			_sub_actuator_armed;
+	uORB::Subscription<actuator_outputs_s>			_sub_actuator_outputs;
+	uORB::Publication<actuator_outputs_s>			_pub_actuator_outputs;
 	uORB::Publication<actuator_controls_s>			_pub_actuator_controls;
 
 	uORB::Subscription<sensor_combined_s>	_sub_sensor_combined;
@@ -59,24 +61,17 @@ private:
 
 	void Controller();
 	matrix::Quatf _qd;
-	matrix::Matrix3f _Rd;
 	float _yaw;
-
-	matrix::Vector3f ControllerQ();									// quaternion based attitude controller
-	template<typename T> int sign(T val) {return (T(0) < val) - (val < T(0));}	// type-safe signum function (http://stackoverflow.com/questions/1903954/is-there-a-standard-sign-function-signum-sgn-in-c-c)
-
-	matrix::Vector3f ControllerR();									// matrix based attitude controller
 	matrix::Vector3f _O_prev;
 
-	void rateController_original();									// the original rate controller as a reference
-	math::Vector<3> _rates_prev;
+	matrix::Vector3f ControllerQ(matrix::Quatf q, matrix::Quatf qd);									// quaternion based attitude controller
+	template<typename T> int sign(T val) {return (T(0) < val) - (val < T(0));}	// type-safe signum function (http://stackoverflow.com/questions/1903954/is-there-a-standard-sign-function-signum-sgn-in-c-c)
 
 	matrix::Quatf FtoQ(matrix::Vector3f F, float yaw);
-	matrix::Dcmf FtoR(matrix::Vector3f F, float yaw);
 
 	void publishMoment(matrix::Vector3f moment, float thrust);
 
-	void Mixer(matrix::Vector<float,4> command);
+	void Mixer(matrix::Vector<float,4> moment_thrust);
 	matrix::Vector<float,4> _motors;
 
 	void PWM();
