@@ -27,7 +27,7 @@ int mcontrol_main(int argc, char *argv[]) {
 		}
 		thread_should_exit = false;
 		deamon_task = px4_task_spawn_cmd("mcontrol", SCHED_DEFAULT,
-				SCHED_PRIORITY_MAX - 5, 10240,
+				SCHED_PRIORITY_MAX - 5, 4096,
 				mcontrol_thread_main,
 				(argv && argc > 2) ? (char * const *) &argv[2] : (char * const *) NULL);
 		return 0;

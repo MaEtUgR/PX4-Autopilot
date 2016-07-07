@@ -113,7 +113,7 @@ void BlockMControl::Estimator() {
 	Vector3f M_ref_body = _q.apply(M_ref);		// reference magnetic vector rotated to body frame
 	if(M.norm() > 0) M.normalize();
 	M_ref_body.normalize();
-	Vector3f wM = M % M_ref_body;
+	Vector3f wM = M % M_ref_body;				// rotation speed to correct with
 
 	Vector3f A_ref(0, 0, -9.81); 				// reference acceleration vector in world frame when NOT moving! (AIT lab)
 	Vector3f A_ref_body = _q.apply(A_ref);		// reference acceleration vector rotated to body frame
@@ -122,7 +122,7 @@ void BlockMControl::Estimator() {
 	Vector3f wA = A % A_ref_body;
 
 	Quatf qrot;
-	qrot.from_axis_angle((O+wM/*+wA*/) * getDt());	// mixing the gyro prediction and the corrections with the fixed vectors
+	qrot.from_axis_angle((O+wM+wA) * getDt());	// mixing the gyro prediction and the corrections with the fixed vectors
 	_q = qrot * _q;
 	_q.normalize();
 
@@ -135,16 +135,17 @@ void BlockMControl::Estimator() {
 	/*if (counter % 40 == 0) {
 		printf("%.3f,%.3f,%.3f,%.3f\n", (double)_sub_actuator_outputs.get().output[0], (double)_sub_actuator_outputs.get().output[1],(double)_sub_actuator_outputs.get().output[2],(double)_sub_actuator_outputs.get().output[3]);
 	}*/
-	/*if (counter % 40 == 0) {
+	if (counter % 40 == 0) {
 		printf("%.3f,%.3f,%.3f,%.3f,", (double)_q(0), (double)_q(1),(double)_q(2),(double)_q(3));
 		printf("%.3f,%.3f,%.3f,%.3f,", (double)q(0), (double)q(1),(double)q(2),(double)q(3));
 		//printf("%.3f,%.3f,%.3f,", (double)O(0), (double)O(1),(double)O(2));
-		printf("%.3f,%.3f,%.3f,", (double)M_ref_body(0), (double)M_ref_body(1),(double)M_ref_body(2));
-		//printf("%.3f,%.3f,%.3f,", (double)wA(0), (double)wA(1),(double)wA(2));
-		printf("%.3f,%.3f,%.3f\n", (double)M(0), (double)M(1),(double)M(2));
+		//printf("%.3f,%.3f,%.3f\n", (double)M_d(0), (double)M_d(1),(double)M_d(2));
+		printf("%.3f,%.3f,%.3f,", (double)A_ref_body(0), (double)A_ref_body(1),(double)A_ref_body(2));
+		printf("%.3f,%.3f,%.3f\n", (double)A(0), (double)A(1),(double)A(2));
+		//printf("%.3f,%.3f,%.3f\n", (double)M(0), (double)M(1),(double)M(2));
 		//printf("%.3f,%.3f,%.3f,%.3f,", (double)_qr(0), (double)_qr(1),(double)_qr(2),(double)_qr(3)); // taylor approx
 		//printf("%.3f,%.3f,%.3f,%.3f,", (double)q(0), (double)q(1),(double)q(2),(double)q(3));
-	}*/
+	}
 }
 
 void BlockMControl::Controller() {
@@ -163,14 +164,14 @@ void BlockMControl::Controller() {
 
 	Quatf q(_sub_vehicle_attitude.get().q); 							// q   : attitude					= estimated attitude from uORB topic
 	Quatf qd(_sub_vehicle_attitude_setpoint.get().q_d);					// qd  : desired attitude			= desired attitude from uORB topic
-	q = _q;
+	q = _q;				// our own attitude from this app
 	if (_simulation)
 		qd = _qd;
 	 Vector3f e_Q = ControllerQ(q, qd);
 
 	Vector3f O(&_sub_control_state.get().roll_rate);									// O   : rate				= gyroscope measurement from uORB topic
-	Vector3f e_O = O - Vector3f(_joystick[0],_joystick[1],_joystick[2])*2;
-	//Vector3f e_O = O - Vector3f(0,0,0);													// e_O : rate error
+	//Vector3f e_O = O - Vector3f(_joystick[0],_joystick[1],_joystick[2])*2;
+	Vector3f e_O = O - Vector3f(0,0,0);													// e_O : rate error
 
 	Vector3f O_d = (O - _O_prev) / getDt();												// O_d: derivative of the rate TODO: estimate angular acceleration
 	_O_prev = O;
@@ -179,7 +180,7 @@ void BlockMControl::Controller() {
 	if(_simulation)
 		m = -0.60f * e_O -3.0f * e_Q -0.004f * O_d;										// m   : angular moment to apply to quad
 	else {
-		m = -0.097f * e_O /*-0.2f * e_Q*/ -0.002f * O_d;
+		m = -0.097f * e_O -0.2f * e_Q -0.002f * O_d;
 	}
 
 	float thrust = _sub_vehicle_attitude_setpoint.get().thrust;
@@ -268,7 +269,7 @@ void BlockMControl::Mixer(Vector<float,4> moment_thrust) {
 	if(_sub_actuator_armed.get().armed) {	// check for system to be armed for safety reasons
 		_motors = Mix*moment_thrust;
 		for(int i = 0; i < 4; i++)
-			_motors(i) = sqrtf(_motors(i));
+			_motors(i) = sqrtf(_motors(i));	// TODO: keep in mind the square root (control gains didn't really change with this)
 	} else {
 		for(int i = 0; i < 4; i++)
 			_motors(i) = 0;

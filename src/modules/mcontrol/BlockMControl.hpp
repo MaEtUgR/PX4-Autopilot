@@ -22,6 +22,7 @@
 #include <uORB/topics/actuator_armed.h>
 #include <uORB/topics/actuator_outputs.h>
 #include "drivers/drv_pwm_output.h"					// for PWM
+#include <mathlib/math/filter/LowPassFilter2p.hpp>	// for low pass filtering signals
 
 class BlockMControl : public control::SuperBlock {
 public:
