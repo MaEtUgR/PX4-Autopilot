@@ -2,7 +2,7 @@
  * @file BlockMControl.cpp
  * @author Matthias Grob <maetugr@gmail.com>
  *
- * Nonlinear Quadrotor Controller (master thesis)
+ * Nonlinear Quadrotor Attitude Control and Estimation (master thesis)
  */
 
 #include "BlockMControl.hpp"
@@ -82,6 +82,7 @@ void BlockMControl::get_joystick_data() {
 }
 
 bool BlockMControl::EstimatorInit(Vector3f A, Vector3f M) {
+	// Quaternion initialisation
 	if(!(A.norm() > 0) || !(M.norm() > 0)) return false;
 	A.normalize();		// we need a rotation matrix with determinant 1 so we can already normalize the input vectors
 	M.normalize();
@@ -98,6 +99,10 @@ bool BlockMControl::EstimatorInit(Vector3f A, Vector3f M) {
 	R.setCol(2, k);
 
 	_q = Quatf(R.T());	// Convert to quaternion
+
+	// QEKF additional initialisation
+	_P = eye<float, 6>();
+
 	return true;
 }
 
@@ -109,41 +114,76 @@ void BlockMControl::Estimator() {
 
 	if(!_estimator_inited) _estimator_inited = EstimatorInit(A,M);
 
-	Vector3f M_ref(0.1250, 0, 0.3980);			// reference magnetic vector in world frame (AIT lab)
-	Vector3f M_ref_body = _q.apply(M_ref);		// reference magnetic vector rotated to body frame
-	if(M.norm() > 0) M.normalize();
+	//Vector3f M_ref(0.1250, 0, 0.3980);
+	Vector3f M_ref(0.4380, 0, 0.8990);			// reference magnetic vector in world frame (AIT lab)
+	M_ref.normalize();
+	Vector3f M_ref_body = _q.apply(M_ref);		// reference magnetic vector rotated to body frame TODO: q.apply is against matrix library conventions?!
+	if(M.norm() > 1e-6f) M.normalize();
 	M_ref_body.normalize();
-	Vector3f wM = M % M_ref_body;				// rotation speed to correct with
+	Vector3f wM = M % M_ref_body;				// residuum/error state measurement of magnetometer
 
 	Vector3f A_ref(0, 0, -9.81); 				// reference acceleration vector in world frame when NOT moving! (AIT lab)
+	A_ref.normalize();
 	Vector3f A_ref_body = _q.apply(A_ref);		// reference acceleration vector rotated to body frame
-	if(A.norm() > 0) A.normalize();
+	if(A.norm() > 1e-6f) A.normalize();
 	A_ref_body.normalize();
-	Vector3f wA = A % A_ref_body;
+	Vector3f wA = A % A_ref_body;				// residuum/error state measurement of accelerometer
 
-	Quatf qrot;
-	qrot.from_axis_angle((O+wM+wA) * getDt());	// mixing the gyro prediction and the corrections with the fixed vectors
-	_q = qrot * _q;
+	if(1) {	// the QEKF (QuaternionEKF) approach
+		//O.setZero();
+		Quatf qrot;
+		qrot.from_axis_angle((O - _b) * getDt()); // gyro measurement in dynamic model replacement mode
+		_q = qrot * _q;							// state prediction (note that the gyro bias is predicted to stay the same)
+
+		SquareMatrix<float,6> A;				// continuous system matrix
+		A.set(-O.hat(),0,0);
+		A.set(-eye<float,3>(),0,3);
+		A = eye<float,6>() + A * getDt();		// from here on A is the first order approximated discrete system transition matrix
+
+		float Q_diag[] = {1,1,1,.1,.1,.1};
+		SquareMatrix<float,6> Q = diag(Vector<float,6>(Q_diag));
+		_P = A*_P*A.T() + Q;
+
+		SquareMatrix<float,6> H;				// measurement sensitivity matrix
+		H.set(eye<float,3>(),0,0);
+		H.set(eye<float,3>(),3,0);
+		Vector<float,6> r;						// residual/error state measurement vector
+		r.set(wM,0,0);
+		r.set(wA,3,0);
+		r *= getDt();
+
+		float R_diag[] = {1,1,1,1,1,1};			// error state measurement update
+		SquareMatrix<float,6> R = diag(Vector<float,6>(R_diag));
+		SquareMatrix<float,6> S = H*_P*H.T() + R;
+		SquareMatrix<float,6> K = _P*H.T()*S.I();
+		Vector<float,6> xe = K*r;				// xe: the error state itself
+
+		qrot.from_axis_angle(xe.slice<3,1>(0,0)); // update the full state with the error state
+		_q = qrot * _q;
+		_b += xe.slice<3, 1>(3,0);
+
+		_P = ( (eye<float,6>() - K*H) * _P * (eye<float,6>() - K*H).T() )     +      K*R*K.T(); // update the covariance matrix
+
+	} else { // a conplementary filter approach for the estimator
+		Quatf qrot;
+		qrot.from_axis_angle((O+wM+wA) * getDt()); // mixing the gyro prediction and the corrections with the fixed vectors
+		_q = qrot * _q;
+	}
 	_q.normalize();
 
-
-	Quatf q(_sub_vehicle_attitude.get().q);	// TODO: for debugging purpouse only
+	Quatf q(_sub_vehicle_attitude.get().q);	// TODO: for debugging output purpouse only
 	Dcmf R(_sub_vehicle_attitude.get().R);
 
 	static int counter = 0;
 	counter++;
-	/*if (counter % 40 == 0) {
-		printf("%.3f,%.3f,%.3f,%.3f\n", (double)_sub_actuator_outputs.get().output[0], (double)_sub_actuator_outputs.get().output[1],(double)_sub_actuator_outputs.get().output[2],(double)_sub_actuator_outputs.get().output[3]);
-	}*/
-	if (counter % 40 == 0) {
+	if (0 && counter % 40 == 0) {
 		printf("%.3f,%.3f,%.3f,%.3f,", (double)_q(0), (double)_q(1),(double)_q(2),(double)_q(3));
 		printf("%.3f,%.3f,%.3f,%.3f,", (double)q(0), (double)q(1),(double)q(2),(double)q(3));
 		//printf("%.3f,%.3f,%.3f,", (double)O(0), (double)O(1),(double)O(2));
 		//printf("%.3f,%.3f,%.3f\n", (double)M_d(0), (double)M_d(1),(double)M_d(2));
-		printf("%.3f,%.3f,%.3f,", (double)A_ref_body(0), (double)A_ref_body(1),(double)A_ref_body(2));
-		printf("%.3f,%.3f,%.3f\n", (double)A(0), (double)A(1),(double)A(2));
+		printf("%.3f,%.3f,%.3f,", (double)M_ref_body(0), (double)M_ref_body(1),(double)M_ref_body(2));
+		printf("%.3f,%.3f,%.3f\n", (double)M(0), (double)M(1),(double)M(2));
 		//printf("%.3f,%.3f,%.3f\n", (double)M(0), (double)M(1),(double)M(2));
-		//printf("%.3f,%.3f,%.3f,%.3f,", (double)_qr(0), (double)_qr(1),(double)_qr(2),(double)_qr(3)); // taylor approx
 		//printf("%.3f,%.3f,%.3f,%.3f,", (double)q(0), (double)q(1),(double)q(2),(double)q(3));
 	}
 }
@@ -167,7 +207,7 @@ void BlockMControl::Controller() {
 	q = _q;				// our own attitude from this app
 	if (_simulation)
 		qd = _qd;
-	 Vector3f e_Q = ControllerQ(q, qd);
+	Vector3f e_Q = ControllerQ(q, qd);
 
 	Vector3f O(&_sub_control_state.get().roll_rate);									// O   : rate				= gyroscope measurement from uORB topic
 	//Vector3f e_O = O - Vector3f(_joystick[0],_joystick[1],_joystick[2])*2;
@@ -194,6 +234,8 @@ void BlockMControl::Controller() {
 }
 
 Vector3f BlockMControl::ControllerQ(Quatf q, Quatf qd) {				// q : known attitude qd : desired attitude
+	if(q.norm() > 1e-6f) q.normalize();									// this is very important because if the quaternions are not exactly normalized we could take acosf(1.00001) and that is NaN
+	if(qd.norm() > 1e-6f) qd.normalize();
 	// ATTENTION: quaternions are defined differently than in the paper they are complex conjugates/reverse rotations compared to the paper
 	Quatf qe = q * qd.inversed();										// full quaternion attitude control
 	if(qe(0) < 0) {														// qe : attitude error				= rotation from the actual attitude to the desired attitude
@@ -205,9 +247,9 @@ Vector3f BlockMControl::ControllerQ(Quatf q, Quatf qd) {				// q : known attitud
 	Dcmf Rd(qd);														// get only the z unit vectors by converting to rotation matrices and taking the last column
 	Vector3f Rz(R(0, 2), R(1, 2), R(2, 2));
 	Vector3f Rdz(Rd(0, 2), Rd(1, 2), Rd(2, 2));
-	float alpha = acosf(Rz.dot(Rdz));									// get the angle between them
+	float alpha = acosf(Rz.dot(Rdz));									// get the angle between them (beware acos(>1 or < -1)!, that's why we normalize the quaternions in the beginning)
 	Vector3f axis = Rz % Rdz;											// and the axis to rotate from one to the other
-	axis.normalize();
+	if(axis.norm() > 1e-6f) axis.normalize();
 	Vector3f qered13 = sinf(alpha/2.f) * axis;
 	Quatf qered(cos(alpha/2.f), qered13(0), qered13(1), qered13(2));	// build up the quaternion that does this rotation
 	Quatf qdred = q * qered;											// qdred: reduced desired attitude	= rotation that's needed to align the z axis but seen from the world frame
@@ -245,12 +287,12 @@ Quatf BlockMControl::FtoQ(Vector3f F, float yaw) {
 }
 
 void BlockMControl::publishMoment(Vector3f moment, float thrust) {
-	if(_simulation) {
-		for(int i = 0; i < 3; i++)	// normal output with pixhawk mixer
+	if(_simulation) {	// normal output with pixhawk mixer
+		for(int i = 0; i < 3; i++)
 			_pub_actuator_controls.get().control[i] = PX4_ISFINITE(moment(i)) ? moment(i) : 0;
 		_pub_actuator_controls.get().control[3] = PX4_ISFINITE(thrust) && thrust > 0 ? thrust : 0;
 		_pub_actuator_controls.update();
-	} else {
+	} else {	// my own mixer with direct access to the motors
 		Vector<float,4> moment_thrust; moment_thrust(0) = moment(0);moment_thrust(1) = moment(1);moment_thrust(2) = moment(2);moment_thrust(3) = thrust;
 		for(int i = 0; i < 4; i++)	// TODO: take this out, original moments and thrust into the log for debugging
 			_pub_actuator_outputs.get().output[4+i] = moment_thrust(i);
@@ -268,8 +310,8 @@ void BlockMControl::Mixer(Vector<float,4> moment_thrust) {
 	SquareMatrix<float,4> Mix(Mixa);
 	if(_sub_actuator_armed.get().armed) {	// check for system to be armed for safety reasons
 		_motors = Mix*moment_thrust;
-		for(int i = 0; i < 4; i++)
-			_motors(i) = sqrtf(_motors(i));	// TODO: keep in mind the square root (control gains didn't really change with this)
+		//for(int i = 0; i < 4; i++)
+			//_motors(i) = sqrtf(_motors(i));	// TODO: keep in mind the square root (control gains didn't really change with this)
 	} else {
 		for(int i = 0; i < 4; i++)
 			_motors(i) = 0;

@@ -57,8 +57,9 @@ private:
 	bool _estimator_inited;
 
 	void Estimator();
-	matrix::Quatf _q;
-	matrix::Quatf _qr;
+	matrix::Quatf _q;												// the attitude state as quaternion
+	matrix::Vector3f _b;											// the gyro bias estimate for the QEKF (QuaternionEKF)
+	matrix::SquareMatrix<float,6> _P;								// the covariance matrix for the QEKF
 
 	void Controller();
 	matrix::Quatf _qd;
