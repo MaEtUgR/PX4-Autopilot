@@ -115,10 +115,13 @@ void BlockMControl::Estimator() {
 	if(!_estimator_inited) _estimator_inited = EstimatorInit(A,M);
 
 	//Vector3f M_ref(0.1250, 0, 0.3980);
-	Vector3f M_ref(0.4380, 0, 0.8990);			// reference magnetic vector in world frame (AIT lab)
+	Vector3f M_ref(0.3162, 0, 0.9485);			// reference magnetic vector in world frame (AIT lab)
 	M_ref.normalize();
 	Vector3f M_ref_body = _q.apply(M_ref);		// reference magnetic vector rotated to body frame TODO: q.apply is against matrix library conventions?!
-	if(M.norm() > 1e-6f) M.normalize();
+	if(M.norm() > 1e-6f && M.norm() < .6f)		// if the mesurement exceeds normal magnetic field amplitudes it has to be a disturbance and we neglect it
+		M.normalize();
+	else
+		M.setZero();
 	M_ref_body.normalize();
 	Vector3f wM = M % M_ref_body;				// residuum/error state measurement of magnetometer
 
@@ -130,7 +133,6 @@ void BlockMControl::Estimator() {
 	Vector3f wA = A % A_ref_body;				// residuum/error state measurement of accelerometer
 
 	if(1) {	// the QEKF (QuaternionEKF) approach
-		//O.setZero();
 		Quatf qrot;
 		qrot.from_axis_angle((O - _b) * getDt()); // gyro measurement in dynamic model replacement mode
 		_q = qrot * _q;							// state prediction (note that the gyro bias is predicted to stay the same)
@@ -140,7 +142,7 @@ void BlockMControl::Estimator() {
 		A.set(-eye<float,3>(),0,3);
 		A = eye<float,6>() + A * getDt();		// from here on A is the first order approximated discrete system transition matrix
 
-		float Q_diag[] = {1,1,1,.1,.1,.1};
+		float Q_diag[] = {1,1,1,1e-4,1e-4,1e-4};
 		SquareMatrix<float,6> Q = diag(Vector<float,6>(Q_diag));
 		_P = A*_P*A.T() + Q;
 
@@ -148,12 +150,14 @@ void BlockMControl::Estimator() {
 		H.set(eye<float,3>(),0,0);
 		H.set(eye<float,3>(),3,0);
 		Vector<float,6> r;						// residual/error state measurement vector
-		r.set(wM,0,0);
-		r.set(wA,3,0);
-		r *= getDt();
+		r.set(wM,0,0);							// first three measurements error from magnetometer vector
+		r.set(wA,3,0);							// second three measurements error from accelerometer vector
 
-		float R_diag[] = {1,1,1,1,1,1};			// error state measurement update
+		float R_diag[] = {10000,10000,10000,10000,10000,10000};			// error state measurement update
 		SquareMatrix<float,6> R = diag(Vector<float,6>(R_diag));
+		if(_sub_actuator_armed.get().armed) {
+			R(3,3) = R(4,4) = R(5,5) = 100000;
+		}
 		SquareMatrix<float,6> S = H*_P*H.T() + R;
 		SquareMatrix<float,6> K = _P*H.T()*S.I();
 		Vector<float,6> xe = K*r;				// xe: the error state itself
@@ -170,6 +174,9 @@ void BlockMControl::Estimator() {
 		_q = qrot * _q;
 	}
 	_q.normalize();
+
+	for(int i = 0; i < 4; i++)	// log estimated quaternion to compare with vicon
+		_pub_actuator_outputs.get().output[4+i] = _q(i);
 
 	Quatf q(_sub_vehicle_attitude.get().q);	// TODO: for debugging output purpouse only
 	Dcmf R(_sub_vehicle_attitude.get().R);
@@ -204,13 +211,13 @@ void BlockMControl::Controller() {
 
 	Quatf q(_sub_vehicle_attitude.get().q); 							// q   : attitude					= estimated attitude from uORB topic
 	Quatf qd(_sub_vehicle_attitude_setpoint.get().q_d);					// qd  : desired attitude			= desired attitude from uORB topic
-	q = _q;				// our own attitude from this app
+	q = _q;				// our own attitude from the estimator this app
 	if (_simulation)
 		qd = _qd;
 	Vector3f e_Q = ControllerQ(q, qd);
 
 	Vector3f O(&_sub_control_state.get().roll_rate);									// O   : rate				= gyroscope measurement from uORB topic
-	//Vector3f e_O = O - Vector3f(_joystick[0],_joystick[1],_joystick[2])*2;
+	//Vector3f e_O = O - Vector3f(_joystick[0],_joystick[1],_joystick[2])*2;	// for rate mode
 	Vector3f e_O = O - Vector3f(0,0,0);													// e_O : rate error
 
 	Vector3f O_d = (O - _O_prev) / getDt();												// O_d: derivative of the rate TODO: estimate angular acceleration
@@ -254,7 +261,7 @@ Vector3f BlockMControl::ControllerQ(Quatf q, Quatf qd) {				// q : known attitud
 	Quatf qered(cos(alpha/2.f), qered13(0), qered13(1), qered13(2));	// build up the quaternion that does this rotation
 	Quatf qdred = q * qered;											// qdred: reduced desired attitude	= rotation that's needed to align the z axis but seen from the world frame
 
-	float p = 0.4f;		// TODO: parameter for this!					// mixing reduced and full attitude control
+	float p = 1.f;		// TODO: parameter for this!					// mixing reduced and full attitude control
 	Quatf qmix = qdred.inversed()*qd;									// qmix	: the roatation from full attitude to reduced attitude correction -> only body yaw roatation -> qmix = [cos(alpha_mix/2) 0 0 sin(alpha_mix/2)]
 	float alphahalf = asinf(qmix(3));									// calculate the angle alpha/2 that the full attitude controller would do more than the reduced in body yaw direction
 	qmix(0) = cosf(p*alphahalf);										// reconstruct a quaternion that scales the body yaw rotation angle error by p = K_yaw / K_roll,pitch
@@ -293,9 +300,11 @@ void BlockMControl::publishMoment(Vector3f moment, float thrust) {
 		_pub_actuator_controls.get().control[3] = PX4_ISFINITE(thrust) && thrust > 0 ? thrust : 0;
 		_pub_actuator_controls.update();
 	} else {	// my own mixer with direct access to the motors
-		Vector<float,4> moment_thrust; moment_thrust(0) = moment(0);moment_thrust(1) = moment(1);moment_thrust(2) = moment(2);moment_thrust(3) = thrust;
-		for(int i = 0; i < 4; i++)	// TODO: take this out, original moments and thrust into the log for debugging
-			_pub_actuator_outputs.get().output[4+i] = moment_thrust(i);
+		Vector<float,4> moment_thrust;
+		moment_thrust(0) = moment(0);	// filling the vector that contains all commands including thrust
+		moment_thrust(1) = moment(1);
+		moment_thrust(2) = moment(2);
+		moment_thrust(3) = thrust;
 		Mixer(moment_thrust);
 	}
 
