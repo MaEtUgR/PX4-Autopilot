@@ -65,6 +65,7 @@ private:
 	matrix::Quatf _qd;
 	float _yaw;
 	matrix::Vector3f _O_prev;
+	bool _rate_mode;
 
 	matrix::Vector3f ControllerQ(matrix::Quatf q, matrix::Quatf qd);									// quaternion based attitude controller
 	template<typename T> int sign(T val) {return (T(0) < val) - (val < T(0));}	// type-safe signum function (http://stackoverflow.com/questions/1903954/is-there-a-standard-sign-function-signum-sgn-in-c-c)

@@ -34,6 +34,7 @@ BlockMControl::BlockMControl(bool simulation) :
 	if (_pwm_fd < 0) err(1, "can't open %s", dev);
 
 	_simulation = simulation;					// TODO: distinction between simulation and reality should not be needed, inputs have to get the same and parameters have to be set differently
+	_rate_mode = false;							// rate mode switches off attitude control and uses joystick input as angular rate commands for debugging/tuning (note: when a force vector is the input for the controller it does not work!)
 }
 
 BlockMControl::~BlockMControl() {
@@ -217,24 +218,31 @@ void BlockMControl::Controller() {
 	Vector3f e_Q = ControllerQ(q, qd);
 
 	Vector3f O(&_sub_control_state.get().roll_rate);									// O   : rate				= gyroscope measurement from uORB topic
-	//Vector3f e_O = O - Vector3f(_joystick[0],_joystick[1],_joystick[2])*2;	// for rate mode
-	Vector3f e_O = O - Vector3f(0,0,0);													// e_O : rate error
+	Vector3f e_O;
+	if(_rate_mode)
+		e_O = O - Vector3f(_joystick[0],_joystick[1],_joystick[2])*2;	// for rate mode
+	else
+		e_O = O - Vector3f(0,0,0);													// e_O : rate error
 
 	Vector3f O_d = (O - _O_prev) / getDt();												// O_d: derivative of the rate TODO: estimate angular acceleration
 	_O_prev = O;
 
 	Vector3f m;
-	if(_simulation)
-		m = -0.60f * e_O -3.0f * e_Q -0.004f * O_d;										// m   : angular moment to apply to quad
-	else {
-		m = -0.097f * e_O -0.2f * e_Q -0.002f * O_d;
+	if(_simulation){
+		m = -0.60f * e_O -0.004f * O_d;										// m   : angular moment to apply to quad
+		if(!_rate_mode)
+			m -= 3.0f * e_Q;
+	} else {
+		m = -0.097f * e_O -0.002f * O_d;
+		if(!_rate_mode)
+			m -= 0.2f * e_Q;
 	}
 
 	float thrust = _sub_vehicle_attitude_setpoint.get().thrust;
 	thrust = _joystick[3];
 	if(_simulation) {
 		thrust = _joystick[3]*1.4f-0.4f;
-		thrust = F.norm()*1.4f-0.4f;	// TODO: throttle should be smaller if we are not aligned with attitude yet
+		thrust = F.norm();//*1.4f-0.4f;	// TODO: throttle should be smaller if we are not aligned with attitude yet
 	}
 
 	publishMoment(m, thrust);
@@ -261,7 +269,7 @@ Vector3f BlockMControl::ControllerQ(Quatf q, Quatf qd) {				// q : known attitud
 	Quatf qered(cos(alpha/2.f), qered13(0), qered13(1), qered13(2));	// build up the quaternion that does this rotation
 	Quatf qdred = q * qered;											// qdred: reduced desired attitude	= rotation that's needed to align the z axis but seen from the world frame
 
-	float p = 1.f;		// TODO: parameter for this!					// mixing reduced and full attitude control
+	float p = .4f;		// TODO: parameter for this!					// mixing reduced and full attitude control
 	Quatf qmix = qdred.inversed()*qd;									// qmix	: the roatation from full attitude to reduced attitude correction -> only body yaw roatation -> qmix = [cos(alpha_mix/2) 0 0 sin(alpha_mix/2)]
 	float alphahalf = asinf(qmix(3));									// calculate the angle alpha/2 that the full attitude controller would do more than the reduced in body yaw direction
 	qmix(0) = cosf(p*alphahalf);										// reconstruct a quaternion that scales the body yaw rotation angle error by p = K_yaw / K_roll,pitch
