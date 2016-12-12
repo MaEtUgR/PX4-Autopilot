@@ -44,6 +44,7 @@ set(config_module_list
 	modules/mavlink
 	modules/mc_att_control
 	modules/mc_pos_control
+	modules/mcontrol_rate
 	modules/navigator
 	modules/param
 	modules/position_estimator_inav

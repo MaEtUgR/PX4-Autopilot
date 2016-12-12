@@ -42,6 +42,7 @@
 #include "topics/vehicle_gps_position.h"
 #include "topics/satellite_info.h"
 #include "topics/sensor_combined.h"
+#include "topics/sensor_gyro.h"
 #include "topics/hil_sensor.h"
 #include "topics/vehicle_attitude.h"
 #include "topics/vehicle_global_position.h"
@@ -160,6 +161,7 @@ template class __EXPORT Subscription<actuator_controls_s>;
 template class __EXPORT Subscription<vehicle_gps_position_s>;
 template class __EXPORT Subscription<satellite_info_s>;
 template class __EXPORT Subscription<sensor_combined_s>;
+template class __EXPORT Subscription<sensor_gyro_s>;
 template class __EXPORT Subscription<hil_sensor_s>;
 template class __EXPORT Subscription<vehicle_attitude_s>;
 template class __EXPORT Subscription<vehicle_global_position_s>;

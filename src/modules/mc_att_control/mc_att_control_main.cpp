@@ -1127,7 +1127,7 @@ MulticopterAttitudeControl::task_main()
 				if (!_actuators_0_circuit_breaker_enabled) {
 					if (_actuators_0_pub != nullptr) {
 
-						orb_publish(_actuators_id, _actuators_0_pub, &_actuators);
+						//orb_publish(_actuators_id, _actuators_0_pub, &_actuators);
 						perf_end(_controller_latency_perf);
 
 					} else if (_actuators_id) {
