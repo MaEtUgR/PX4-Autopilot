@@ -149,7 +149,7 @@ private:
 	orb_advert_t	_controller_status_pub;	/**< controller status publication */
 
 	orb_id_t _rates_sp_id;	/**< pointer to correct rates setpoint uORB metadata structure */
-	orb_id_t _actuators_id;	/**< pointer to correct actuator controls0 uORB metadata structure */
+	//orb_id_t _actuators_id;	/**< pointer to correct actuator controls0 uORB metadata structure */
 
 	bool		_actuators_0_circuit_breaker_enabled;	/**< circuit breaker to suppress output */
 
@@ -373,7 +373,7 @@ MulticopterAttitudeControl::MulticopterAttitudeControl() :
 	_actuators_0_pub(nullptr),
 	_controller_status_pub(nullptr),
 	_rates_sp_id(0),
-	_actuators_id(0),
+	//_actuators_id(0),
 
 	_actuators_0_circuit_breaker_enabled(false),
 
@@ -700,11 +700,11 @@ MulticopterAttitudeControl::vehicle_status_poll()
 		if (!_rates_sp_id) {
 			if (_vehicle_status.is_vtol) {
 				_rates_sp_id = ORB_ID(mc_virtual_rates_setpoint);
-				_actuators_id = ORB_ID(actuator_controls_virtual_mc);
+				//_actuators_id = ORB_ID(actuator_controls_virtual_mc);
 
 			} else {
 				_rates_sp_id = ORB_ID(vehicle_rates_setpoint);
-				_actuators_id = ORB_ID(actuator_controls_0);
+				//_actuators_id = ORB_ID(actuator_controls_0);
 			}
 		}
 	}
@@ -1125,14 +1125,14 @@ MulticopterAttitudeControl::task_main()
 				_controller_status.timestamp = hrt_absolute_time();
 
 				if (!_actuators_0_circuit_breaker_enabled) {
-					if (_actuators_0_pub != nullptr) {
+					/*if (_actuators_0_pub != nullptr) {
 
-						//orb_publish(_actuators_id, _actuators_0_pub, &_actuators);
+						orb_publish(_actuators_id, _actuators_0_pub, &_actuators);
 						perf_end(_controller_latency_perf);
 
 					} else if (_actuators_id) {
 						_actuators_0_pub = orb_advertise(_actuators_id, &_actuators);
-					}
+					}*/
 
 				}
 
