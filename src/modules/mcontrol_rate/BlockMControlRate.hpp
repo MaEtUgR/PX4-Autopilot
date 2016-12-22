@@ -15,7 +15,8 @@
 #include <uORB/topics/vehicle_rates_setpoint.h>
 #include <uORB/topics/actuator_outputs.h>
 
-class BlockMControlRate : public control::Block {
+class BlockMControlRate : public control::Block
+{
 public:
 	BlockMControlRate();
 	~BlockMControlRate();
@@ -34,5 +35,5 @@ private:
 
 	void controlRate();
 
-	void publishMomentThrust(matrix::Vector<float,4> moment_thrust);
+	void publishMomentThrust(matrix::Vector<float, 4> moment_thrust);
 };
