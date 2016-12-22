@@ -11,6 +11,7 @@
 #include <matrix/math.hpp>
 #include <controllib/block/Block.hpp>
 #include <uORB/topics/sensor_gyro.h>
+#include <uORB/topics/manual_control_setpoint.h>
 #include <uORB/topics/vehicle_rates_setpoint.h>
 #include <uORB/topics/actuator_outputs.h>
 
@@ -21,6 +22,7 @@ public:
 	void update();
 private:
 	uORB::Subscription<sensor_gyro_s> _sub_sensor_gyro;
+	uORB::Subscription<manual_control_setpoint_s> _sub_manual_control_setpoint;
 	uORB::Subscription<vehicle_rates_setpoint_s> _sub_vehicle_rates_setpoint;
 	uORB::Publication<actuator_controls_s> _pub_actuator_controls;
 
