@@ -3058,7 +3058,7 @@ MulticopterPositionControl::task_main()
 		if (_test_flight_tasks.get()) {
 			switch (_vehicle_status.nav_state) {
 			case vehicle_status_s::NAVIGATION_STATE_ALTCTL:
-				_flight_tasks.switchTask(FlightTaskIndex::Altitude);
+				_flight_tasks.switchTask(FlightTaskIndex::Flip);
 				break;
 
 			case vehicle_status_s::NAVIGATION_STATE_POSCTL:

@@ -82,9 +82,13 @@ void PositionControl::updateState(const struct vehicle_local_position_s state, c
 void PositionControl::updateSetpoint(struct vehicle_local_position_setpoint_s setpoint)
 {
 	_pos_sp = Vector3f(&setpoint.x);
+	//_pos_sp.print();
 	_vel_sp = Vector3f(&setpoint.vx);
+	//_vel_sp.print();
 	_acc_sp = Vector3f(&setpoint.acc_x);
+	//_acc_sp.print();
 	_thr_sp = Vector3f(setpoint.thrust);
+	//_thr_sp.print();
 	_yaw_sp = setpoint.yaw;
 	_yawspeed_sp = setpoint.yawspeed;
 	_interfaceMapping();
@@ -215,12 +219,13 @@ void PositionControl::_velocityController(const float &dt)
 	 */
 
 	/* Get maximum tilt */
-	float tilt_max = M_PI_2_F;
+	float tilt_max = M_PI_F;
 
 	if (PX4_ISFINITE(_constraints.tilt_max) && _constraints.tilt_max <= tilt_max) {
-		tilt_max = _constraints.tilt_max;
+		//tilt_max = _constraints.tilt_max;
 	}
 
+	//printf("%.3f \n", (double) tilt_max);
 	Vector3f vel_err = _vel_sp - _vel;
 
 	/*
