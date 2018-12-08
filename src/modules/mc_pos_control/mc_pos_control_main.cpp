@@ -787,7 +787,7 @@ MulticopterPositionControl::run()
 			_flight_tasks.updateVelocityControllerIO(_control.getVelSp(), thr_sp); // Inform FlightTask about the input and output of the velocity controller
 
 			// Fill attitude setpoint. Attitude is computed from yaw and thrust setpoint.
-			_att_sp = ControlMath::thrustToAttitude(thr_sp, _control.getYawSetpoint());
+			ControlMath::thrustToAttitude(_att_sp, thr_sp, _control.getYawSetpoint());
 			_att_sp.yaw_sp_move_rate = _control.getYawspeedSetpoint();
 			_att_sp.fw_control_yaw = false;
 			_att_sp.apply_flaps = false;

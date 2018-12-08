@@ -31,9 +31,10 @@ bool ControlMathTest::testThrAttMapping()
 	/* expected: zero roll, zero pitch, zero yaw, full thr mag
 	 * reasone: thrust pointing full upward
 	 */
+	vehicle_attitude_setpoint_s att;
 	matrix::Vector3f thr{0.0f, 0.0f, -1.0f};
 	float yaw = 0.0f;
-	vehicle_attitude_setpoint_s att = ControlMath::thrustToAttitude(thr, yaw);
+	ControlMath::thrustToAttitude(att, thr, yaw);
 	ut_assert_true(att.roll_body < SIGMA_SINGLE_OP);
 	ut_assert_true(att.pitch_body < SIGMA_SINGLE_OP);
 	ut_assert_true(att.yaw_body < SIGMA_SINGLE_OP);
@@ -43,7 +44,7 @@ bool ControlMathTest::testThrAttMapping()
 	 * reason: only yaw changed
 	 */
 	yaw = M_PI_2_F;
-	att = ControlMath::thrustToAttitude(thr, yaw);
+	ControlMath::thrustToAttitude(att, thr, yaw);
 	ut_assert_true(att.roll_body < SIGMA_SINGLE_OP);
 	ut_assert_true(att.pitch_body < SIGMA_SINGLE_OP);
 	ut_assert_true(att.yaw_body - M_PI_2_F < SIGMA_SINGLE_OP);
@@ -54,7 +55,7 @@ bool ControlMathTest::testThrAttMapping()
 	 * order is: 1. roll, 2. pitch, 3. yaw
 	 */
 	thr = matrix::Vector3f(0.0f, 0.0f, 1.0f);
-	att = ControlMath::thrustToAttitude(thr, yaw);
+	ControlMath::thrustToAttitude(att, thr, yaw);
 	ut_assert_true(fabsf(att.roll_body) - M_PI_F < SIGMA_SINGLE_OP);
 	ut_assert_true(fabsf(att.pitch_body) < SIGMA_SINGLE_OP);
 	ut_assert_true(att.yaw_body - M_PI_2_F < SIGMA_SINGLE_OP);

@@ -51,7 +51,7 @@ namespace ControlMath
  * @param yaw_sp the desired yaw
  * @return vehicle_attitude_setpoints_s structure
  */
-vehicle_attitude_setpoint_s thrustToAttitude(const matrix::Vector3f &thr_sp, const float yaw_sp);
+void thrustToAttitude(vehicle_attitude_setpoint_s &att_sp, const matrix::Vector3f &thr_sp, const float yaw_sp);
 
 /**
  * Outputs the sum of two vectors but respecting the limits and priority.
