@@ -750,11 +750,12 @@ MulticopterPositionControl::run()
 			}
 
 			// update position controller setpoints
+			setpoint.vx = setpoint.vy = setpoint.vz = 0.f;
 			if (!_control.updateSetpoint(setpoint)) {
 				warn_rate_limited("Position-Control Setpoint-Update failed");
 			}
 
-			// Generate desired thrust and yaw.
+			// Generate desired thrust and yaw. (runs position controller update)
 			_control.generateThrustYawSetpoint(_dt);
 
 			matrix::Vector3f thr_sp = _control.getThrustSetpoint();

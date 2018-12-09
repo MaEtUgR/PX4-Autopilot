@@ -200,7 +200,7 @@ void PositionControl::_positionController()
 {
 	// P-position controller
 	const Vector3f vel_sp_position = (_pos_sp - _pos).emult(Vector3f(MPC_XY_P.get(), MPC_XY_P.get(), MPC_Z_P.get()));
-	_vel_sp = vel_sp_position + _vel_sp;
+	_vel_sp += vel_sp_position;
 
 	// Constrain horizontal velocity by prioritizing the velocity component along the
 	// the desired position setpoint over the feed-forward term.

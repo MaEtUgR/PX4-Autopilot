@@ -529,7 +529,7 @@ MulticopterAttitudeControl::control_attitude()
 	/* prepare yaw weight from the ratio between roll/pitch and yaw gains */
 	Vector3f attitude_gain = _attitude_p;
 	const float roll_pitch_gain = (attitude_gain(0) + attitude_gain(1)) / 2.f;
-	const float yaw_w = math::constrain(attitude_gain(2) / roll_pitch_gain, 0.f, 1.f);
+	//const float yaw_w = math::constrain(attitude_gain(2) / roll_pitch_gain, 0.f, 1.f);
 	attitude_gain(2) = roll_pitch_gain;
 
 	/* get estimated and desired vehicle attitude */
@@ -544,6 +544,7 @@ MulticopterAttitudeControl::control_attitude()
 	Vector3f e_z = q.dcm_z();
 	Vector3f e_z_d = qd.dcm_z();
 	Quatf qd_red(e_z, e_z_d);
+	_yaw_w = math::constrain(1 - 2*AxisAnglef(qd_red).angle(), 0.f, 1.f);
 
 	if (abs(qd_red(1)) > (1.f - 1e-5f) || abs(qd_red(2)) > (1.f - 1e-5f)) {
 		/* In the infinitesimal corner case where the vehicle and thrust have the completely opposite direction,
@@ -562,7 +563,7 @@ MulticopterAttitudeControl::control_attitude()
 	/* catch numerical problems with the domain of acosf and asinf */
 	q_mix(0) = math::constrain(q_mix(0), -1.f, 1.f);
 	q_mix(3) = math::constrain(q_mix(3), -1.f, 1.f);
-	qd = qd_red * Quatf(cosf(yaw_w * acosf(q_mix(0))), 0, 0, sinf(yaw_w * asinf(q_mix(3))));
+	qd = qd_red * Quatf(cosf(_yaw_w * acosf(q_mix(0))), 0, 0, sinf(_yaw_w * asinf(q_mix(3))));
 
 	/* quaternion attitude control law, qe is rotation from q to qd */
 	Quatf qe = q.inversed() * qd;
@@ -746,7 +747,7 @@ MulticopterAttitudeControl::publish_rate_controller_status()
 	rate_ctrl_status.rollspeed = _rates_prev(0);
 	rate_ctrl_status.pitchspeed = _rates_prev(1);
 	rate_ctrl_status.yawspeed = _rates_prev(2);
-	rate_ctrl_status.rollspeed_integ = _rates_int(0);
+	rate_ctrl_status.rollspeed_integ = _yaw_w;
 	rate_ctrl_status.pitchspeed_integ = _rates_int(1);
 	rate_ctrl_status.yawspeed_integ = _rates_int(2);
 	orb_publish_auto(ORB_ID(rate_ctrl_status), &_controller_status_pub, &rate_ctrl_status, nullptr, ORB_PRIO_DEFAULT);

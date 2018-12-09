@@ -309,6 +309,16 @@ void FlightTaskManualAltitude::_updateSetpoints()
 
 bool FlightTaskManualAltitude::update()
 {
+	if (_sticks_expo(0) < 0.7f) {
+		_position_setpoint = Vector3f(0,0,-2);
+		_yaw_setpoint = 0;
+	} else {
+		_position_setpoint = Vector3f(-20,0,-2);
+		//_thrust_setpoint = Vector3f(-0.2,0,-0.7);
+		_yaw_setpoint = M_PI_F;
+	}
+	return true;
+
 	_scaleSticks();
 	_updateSetpoints();
 
