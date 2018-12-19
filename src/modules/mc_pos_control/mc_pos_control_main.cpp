@@ -661,10 +661,11 @@ MulticopterPositionControl::run()
 			_flight_tasks.setYawHandler(_wv_controller);
 
 			// update task
-			if (!_flight_tasks.update()) {
+			if (!_flight_tasks.update() || MPC_OBS_AVOID.get()) {
 				// FAILSAFE
 				// Task was not able to update correctly. Do Failsafe.
-				failsafe(setpoint, _states, false, !was_in_failsafe);
+				//failsafe(setpoint, _states, false, !was_in_failsafe);
+				_flight_tasks.switchTask(FlightTaskIndex::Failsafe);
 
 			} else {
 				setpoint = _flight_tasks.getPositionSetpoint();
@@ -1118,8 +1119,6 @@ MulticopterPositionControl::failsafe(vehicle_local_position_setpoint_s &setpoint
 
 	if (!_failsafe_land_hysteresis.get_state() && !force) {
 		// just keep current setpoint and don't do anything.
-
-
 
 	} else {
 		setpoint.x = setpoint.y = setpoint.z = NAN;

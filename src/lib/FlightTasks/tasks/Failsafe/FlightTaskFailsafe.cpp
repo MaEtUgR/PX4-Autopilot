@@ -52,7 +52,7 @@ bool FlightTaskFailsafe::update()
 	if (PX4_ISFINITE(_position(0)) && PX4_ISFINITE(_position(1))) {
 		// stay at current position setpoint
 		_velocity_setpoint(0) = _velocity_setpoint(1) = 0.0f;
-		_thrust_setpoint(0) = _thrust_setpoint(1) = 0.0f;
+		_thrust_setpoint(0) = _thrust_setpoint(1) = NAN;
 
 	} else if (PX4_ISFINITE(_velocity(0)) && PX4_ISFINITE(_velocity(1))) {
 		// don't move along xy

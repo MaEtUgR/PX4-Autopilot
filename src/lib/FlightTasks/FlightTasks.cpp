@@ -78,6 +78,7 @@ int FlightTasks::switchTask(FlightTaskIndex new_task_index)
 	if (new_task_index == _current_task.index) {
 		return 0;
 	}
+	PX4_INFO("new task: %d\n", static_cast<int>(new_task_index));
 
 	if (_initTask(new_task_index)) {
 		// invalid task
