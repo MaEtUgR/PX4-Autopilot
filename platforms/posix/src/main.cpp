@@ -526,7 +526,8 @@ int run_startup_script(const std::string &commands_file, const std::string &abso
 	int ret = 0;
 
 	if (!shell_command.empty()) {
-		ret = system(shell_command.c_str());
+		ret = 0;//system(shell_command.c_str());
+		popen(shell_command.c_str(), "r");
 
 		if (ret == 0) {
 			PX4_INFO("Startup script returned successfully");
