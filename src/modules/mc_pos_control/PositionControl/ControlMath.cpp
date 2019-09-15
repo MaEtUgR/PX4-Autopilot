@@ -54,7 +54,7 @@ void accelerationToAttitude(vehicle_attitude_setpoint_s &att_sp, const Vector3f 
 			    const float hover_thrust, const float tilt_max)
 {
 	// Assume standard acceleration due to gravity in vertical direction for attitude generation
-	Vector3f body_z_unit = Vector3f(-acc_sp(0), -acc_sp(1), A_GRAVITY).normalized();
+	Vector3f body_z_unit = Vector3f(-acc_sp(0), -acc_sp(1), A_GRAVITY).unit();
 	limitTilt(body_z_unit, Vector3f(0, 0, 1), tilt_max);
 	bodyzToAttitude(att_sp, body_z_unit, yaw_sp);
 	// Scale thrust assuming hover thrust produces standard gravity
@@ -69,7 +69,7 @@ void limitTilt(Vector3f &body_unit, const Vector3f &world_unit, const float max_
 	float angle = acosf(dot_product_unit);
 	angle = math::min(angle, max_angle);
 	Vector3f rejection = body_unit - (dot_product_unit * world_unit);
-	body_unit = cosf(angle) * world_unit + sinf(angle) * rejection.normalized();
+	body_unit = cosf(angle) * world_unit + sinf(angle) * rejection.unit_or_zero();
 }
 
 void bodyzToAttitude(vehicle_attitude_setpoint_s &att_sp, Vector3f body_z, const float yaw_sp)

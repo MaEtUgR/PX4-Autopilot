@@ -187,7 +187,7 @@ TEST_F(PositionControlBasicTest, PositionControlMaxVelocity)
 	EXPECT_LE(abs(_output_setpoint.vz), 1);
 }
 
-TEST_F(PositionControlBasicTest, PositionControlThrust)
+TEST_F(PositionControlBasicTest, PositionControlThrustLimit)
 {
 	_input_setpoint.x = 10;
 	_input_setpoint.y = 10;
@@ -198,4 +198,17 @@ TEST_F(PositionControlBasicTest, PositionControlThrust)
 	EXPECT_EQ(_attitude.thrust_body[1], 0.f);
 	EXPECT_LT(_attitude.thrust_body[2], -.1f);
 	EXPECT_GE(_attitude.thrust_body[2], -0.9f);
+}
+
+TEST_F(PositionControlBasicTest, PositionControlFailsafeInput)
+{
+	_input_setpoint.vz = 0.7f;
+	_input_setpoint.acceleration[0] = _input_setpoint.acceleration[1] = 0.0f;
+	_input_setpoint.thrust[0] = _input_setpoint.thrust[1] = 0.0f;
+
+	runController();
+	EXPECT_EQ(_attitude.thrust_body[0], 0.f);
+	EXPECT_EQ(_attitude.thrust_body[1], 0.f);
+	EXPECT_GT(_output_setpoint.acceleration[2], 0);
+	EXPECT_GT(_attitude.thrust_body[2], -0.5f);
 }
