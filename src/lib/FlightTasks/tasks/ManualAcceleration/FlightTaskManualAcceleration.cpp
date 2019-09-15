@@ -65,6 +65,7 @@ bool FlightTaskManualAcceleration::update()
 
 	// Add drag to limit speed and brake again
 	_acceleration_setpoint -= 2.f * _velocity;
+	_acceleration_setpoint(2) -= 4.f * _velocity(2);
 
 	lockAltitude();
 	lockPosition(stick_xy.length());

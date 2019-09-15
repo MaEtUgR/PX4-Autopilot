@@ -296,7 +296,7 @@ MulticopterAttitudeControl::generate_attitude_setpoint(float dt, bool reset_yaw_
 	attitude_setpoint.yaw_body = _man_yaw_sp + euler_sp(2);
 
 	/* modify roll/pitch only if we're a VTOL */
-	if (_vehicle_status.is_vtol) {
+	if (true) {
 		// Construct attitude setpoint rotation matrix. Modify the setpoints for roll
 		// and pitch such that they reflect the user's intention even if a large yaw error
 		// (yaw_sp - yaw) is present. In the presence of a yaw error constructing a rotation matrix

@@ -42,8 +42,6 @@
 
 using namespace matrix;
 
-static constexpr float A_GRAVITY = 9.80665f; // m/s^2 as defined by the SI standard
-
 namespace ControlMath
 {
 void thrustToAttitude(vehicle_attitude_setpoint_s &att_sp, const Vector3f &thr_sp, const float yaw_sp)
@@ -62,7 +60,7 @@ void accelerationToAttitude(vehicle_attitude_setpoint_s &att_sp, const Vector3f 
 	// Scale thrust assuming hover thrust produces standard gravity
 	att_sp.thrust_body[2] = acc_sp(2) * (hover_thrust / A_GRAVITY) - hover_thrust;
 	// Project thrust to planned body attitude
-	att_sp.thrust_body[2] = att_sp.thrust_body[2] / (Vector3f(0, 0, 1).dot(body_z_unit));
+	att_sp.thrust_body[2] /= (Vector3f(0, 0, 1).dot(body_z_unit));
 }
 
 void limitTilt(Vector3f &body_unit, const Vector3f &world_unit, const float max_angle)
@@ -78,7 +76,7 @@ void bodyzToAttitude(vehicle_attitude_setpoint_s &att_sp, Vector3f body_z, const
 {
 	att_sp.yaw_body = yaw_sp;
 
-	if (body_z.norm_squared() > 0.00001f) {
+	if (body_z.norm_squared() > 1e-4f) {
 		body_z = body_z.normalized();
 
 	} else {
