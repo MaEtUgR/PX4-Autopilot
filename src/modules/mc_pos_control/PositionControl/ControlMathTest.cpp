@@ -38,6 +38,65 @@
 using namespace matrix;
 using namespace ControlMath;
 
+TEST(ControlMathTest, LimitTiltUnchanged)
+{
+	Vector3f body = Vector3f(0, 0, 1).normalized();
+	Vector3f body_before = body;
+	limitTilt(body, Vector3f(0, 0, 1), M_DEG_TO_RAD_F * 45.f);
+	EXPECT_EQ(body, body_before);
+
+	body = Vector3f(0, .1f, 1).normalized();
+	body_before = body;
+	limitTilt(body, Vector3f(0, 0, 1), M_DEG_TO_RAD_F * 45.f);
+	EXPECT_EQ(body, body_before);
+}
+
+TEST(ControlMathTest, LimitTiltOpposite)
+{
+	Vector3f body = Vector3f(0, 0, -1).normalized();
+	limitTilt(body, Vector3f(0, 0, 1), M_DEG_TO_RAD_F * 45.f);
+	float angle = acosf(body.dot(Vector3f(0, 0, 1)));
+	EXPECT_NEAR(angle * M_RAD_TO_DEG_F, 45.f, 1e-4f);
+	EXPECT_FLOAT_EQ(body.length(), 1.f);
+}
+
+TEST(ControlMathTest, LimitTiltAlmostOpposite)
+{
+	// This case doesn't trigger corner case handling but is very close to it
+	Vector3f body = Vector3f(0.001f, 0, -1.f).normalized();
+	limitTilt(body, Vector3f(0, 0, 1), M_DEG_TO_RAD_F * 45.f);
+	float angle = acosf(body.dot(Vector3f(0, 0, 1)));
+	EXPECT_NEAR(angle * M_RAD_TO_DEG_F, 45.f, 1e-4f);
+	EXPECT_FLOAT_EQ(body.length(), 1.f);
+}
+
+TEST(ControlMathTest, LimitTilt45degree)
+{
+	Vector3f body = Vector3f(1, 0, 0);
+	limitTilt(body, Vector3f(0, 0, 1), M_DEG_TO_RAD_F * 45.f);
+	EXPECT_EQ(body, Vector3f(M_SQRT1_2_F, 0, M_SQRT1_2_F));
+
+	body = Vector3f(0, 1, 0);
+	limitTilt(body, Vector3f(0, 0, 1), M_DEG_TO_RAD_F * 45.f);
+	EXPECT_EQ(body, Vector3f(0, M_SQRT1_2_F, M_SQRT1_2_F));
+}
+
+TEST(ControlMathTest, LimitTilt10degree)
+{
+	Vector3f body = Vector3f(1, 1, .1f).normalized();
+	limitTilt(body, Vector3f(0, 0, 1), M_DEG_TO_RAD_F * 10.f);
+	float angle = acosf(body.dot(Vector3f(0, 0, 1)));
+	EXPECT_NEAR(angle * M_RAD_TO_DEG_F, 10.f, 1e-4f);
+	EXPECT_FLOAT_EQ(body.length(), 1.f);
+	EXPECT_FLOAT_EQ(body(0), body(1));
+
+	body = Vector3f(1, 2, .2f);
+	limitTilt(body, Vector3f(0, 0, 1), M_DEG_TO_RAD_F * 10.f);
+	angle = acosf(body.dot(Vector3f(0, 0, 1)));
+	EXPECT_NEAR(angle * M_RAD_TO_DEG_F, 10.f, 1e-4f);
+	EXPECT_FLOAT_EQ(body.length(), 1.f);
+	EXPECT_FLOAT_EQ(2.f * body(0), body(1));
+}
 
 TEST(ControlMathTest, ThrottleAttitudeMapping)
 {
