@@ -165,6 +165,7 @@ void FlightTaskManualPosition::_updateXYlock()
 void FlightTaskManualPosition::_updateSetpoints()
 {
 	FlightTaskManualAltitude::_updateSetpoints(); // needed to get yaw and setpoints in z-direction
+	_acceleration_setpoint.setNaN(); // don't use the horizontal setpoints from FlightTaskAltitude
 
 	_updateXYlock(); // check for position lock
 
@@ -179,6 +180,4 @@ void FlightTaskManualPosition::_updateSetpoints()
 		}
 
 	}
-
-	_thrust_setpoint.setAll(NAN); // don't require any thrust setpoints
 }
