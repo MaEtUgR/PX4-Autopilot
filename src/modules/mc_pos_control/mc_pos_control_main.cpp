@@ -582,10 +582,10 @@ MulticopterPositionControl::Run()
 						    constraints.speed_up, !_control_mode.flag_control_climb_rate_enabled, time_stamp_now);
 			constraints.speed_up = _takeoff.updateRamp(_dt, constraints.speed_up);
 
-			if (_takeoff.getTakeoffState() < TakeoffState::rampup && !PX4_ISFINITE(setpoint.thrust[2])) {
+			if (_takeoff.getTakeoffState() < TakeoffState::rampup) {
 				// we are not flying yet and need to avoid any corrections
 				reset_setpoint_to_nan(setpoint);
-				setpoint.thrust[0] = setpoint.thrust[1] = setpoint.thrust[2] = 0.0f;
+				Vector3f(0.f, 0.f, 100.f).copyTo(setpoint.acceleration); // High downwards acceleration to make sure there's no thrust
 				// set yaw-sp to current yaw
 				// TODO: we need a clean way to disable yaw control
 				setpoint.yaw = _states.yaw;
@@ -605,7 +605,7 @@ MulticopterPositionControl::Run()
 				_hover_thrust_estimator.update(_dt);
 			}
 
-			if (_takeoff.getTakeoffState() < TakeoffState::flight && !PX4_ISFINITE(setpoint.thrust[2])) {
+			if (_takeoff.getTakeoffState() < TakeoffState::flight) {
 				constraints.tilt = math::radians(_param_mpc_tiltmax_lnd.get());
 			}
 
@@ -647,7 +647,7 @@ MulticopterPositionControl::Run()
 			// Inform FlightTask about the input and output of the velocity controller
 			// This is used to properly initialize the velocity setpoint when onpening the position loop (position unlock)
 			_flight_tasks.updateVelocityControllerIO(Vector3f(local_pos_sp.vx, local_pos_sp.vy, local_pos_sp.vz),
-					Vector3f(local_pos_sp.thrust));
+					Vector3f(local_pos_sp.acceleration));
 
 			// Inform the hover thrust estimator about the current thrust (positive thrust is up)
 			_hover_thrust_estimator.setThrust(-local_pos_sp.thrust[2]);
@@ -659,7 +659,7 @@ MulticopterPositionControl::Run()
 			// Part of landing logic: if ground-contact/maybe landed was detected, turn off
 			// controller. This message does not have to be logged as part of the vehicle_local_position_setpoint topic.
 			// Note: only adust thrust output if there was not thrust-setpoint demand in D-direction.
-			if (_takeoff.getTakeoffState() > TakeoffState::rampup && !PX4_ISFINITE(setpoint.thrust[2])) {
+			if (_takeoff.getTakeoffState() > TakeoffState::rampup) {
 				limit_thrust_during_landing(attitude_setpoint);
 			}
 
@@ -937,7 +937,7 @@ MulticopterPositionControl::failsafe(vehicle_local_position_setpoint_s &setpoint
 
 		if (PX4_ISFINITE(_states.velocity(0)) && PX4_ISFINITE(_states.velocity(1))) {
 			// don't move along xy
-			setpoint.vx = setpoint.vy = 0.0f;
+			setpoint.vx = setpoint.vy = 0.f;
 
 			if (warn) {
 				PX4_WARN("Failsafe: stop and wait");
@@ -945,7 +945,7 @@ MulticopterPositionControl::failsafe(vehicle_local_position_setpoint_s &setpoint
 
 		} else {
 			// descend with land speed since we can't stop
-			setpoint.thrust[0] = setpoint.thrust[1] = 0.f;
+			setpoint.acceleration[0] = setpoint.acceleration[1] = 0.f;
 			setpoint.vz = _param_mpc_land_speed.get();
 
 			if (warn) {
@@ -962,7 +962,7 @@ MulticopterPositionControl::failsafe(vehicle_local_position_setpoint_s &setpoint
 		} else {
 			// emergency descend with a bit below hover thrust
 			setpoint.vz = NAN;
-			setpoint.thrust[2] = _param_mpc_thr_hover.get() * .8f;
+			setpoint.acceleration[2] = .3f;
 
 			if (warn) {
 				PX4_WARN("Failsafe: blind descend");
