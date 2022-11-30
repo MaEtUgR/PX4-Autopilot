@@ -16,6 +16,7 @@ uint32 mode_req_mission
 uint32 mode_req_offboard_signal
 uint32 mode_req_home_position
 uint32 mode_req_prevent_arming    # if set, cannot arm while in this mode
+uint32 mode_req_manual_control
 uint32 mode_req_other             # other requirements, not covered above (for external modes)
 
 
