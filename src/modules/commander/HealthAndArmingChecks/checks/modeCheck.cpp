@@ -151,11 +151,12 @@ void ModeChecks::checkAndReport(const Context &context, Report &reporter)
 		 * Sticks can be enabled via <param>COM_RC_IN_MODE</param> parameter.
 		 * </profile>
 		 */
-		reporter.armingCheckFailure((NavModes)reporter.failsafeFlags().mode_req_manual_control,
+		reporter.armingCheckFailure(NavModes::None,
 					    health_component_t::remote_control,
 					    events::ID("check_modes_manual_control"),
 					    events::Log::Critical, "No manual control input");
 		reporter.clearCanRunBits((NavModes)reporter.failsafeFlags().mode_req_manual_control);
+		reporter.clearArmingBits((NavModes)reporter.failsafeFlags().mode_req_manual_control);
 	}
 
 	if (reporter.failsafeFlags().mode_req_other != 0) {

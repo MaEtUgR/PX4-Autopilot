@@ -70,7 +70,25 @@ void RcAndDataLinkChecks::checkAndReport(const Context &context, Report &reporte
 		_last_valid_manual_control_setpoint = manual_control_setpoint.timestamp;
 	}
 
-	// Manual control check is in modeCheck as mode requirement
+	// const bool rc_disabled = (_param_com_rc_in_mode.get() == 4);
+
+	// if (!rc_disabled && reporter.failsafeFlags().manual_control_signal_lost) {
+	// 	/* EVENT
+	// 	* @description
+	// 	* Stick input enabled but not present.
+	// 	* <profile name="dev">
+	// 	* This check can be configured via <param>COM_RC_IN_MODE</param> parameter.
+	// 	* </profile>
+	// 	*/
+	// 	reporter.warning((NavModes)(~reporter.failsafeFlags().mode_req_manual_control),
+	// 			 health_component_t::remote_control,
+	// 			 events::ID("check_rc_dl_no_rc"),
+	// 			 events::Log::Info, "No manual control input");
+
+	// 	if (reporter.mavlink_log_pub()) {
+	// 		mavlink_log_info(reporter.mavlink_log_pub(), "Preflight Fail: No manual control input\t");
+	// 	}
+	// }
 
 	// GCS connection
 	reporter.failsafeFlags().gcs_connection_lost = context.status().gcs_connection_lost;

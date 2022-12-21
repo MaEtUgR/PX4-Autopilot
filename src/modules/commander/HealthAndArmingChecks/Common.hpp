@@ -300,8 +300,9 @@ private:
 			unsigned args_size);
 
 	NavModes reportedModes(NavModes required_modes);
-
+public:
 	void clearArmingBits(NavModes modes);
+private:
 
 	NavModes getModeGroup(uint8_t nav_state) const;
 
