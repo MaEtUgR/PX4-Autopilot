@@ -136,8 +136,8 @@ void FlightModeManager::updateParams()
 
 void FlightModeManager::start_flight_task()
 {
+	bool found_matching_task = false;
 	bool task_failure = false;
-	bool should_disable_task = true;
 
 	// Do not run any flight task for VTOLs in fixed-wing mode
 	if (_vehicle_status_sub.get().vehicle_type == vehicle_status_s::VEHICLE_TYPE_FIXED_WING) {
@@ -151,9 +151,10 @@ void FlightModeManager::start_flight_task()
 		return;
 	}
 
-	// Auto-follow me
-	if (_vehicle_status_sub.get().nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_FOLLOW_TARGET) {
-		should_disable_task = false;
+	// Follow me
+	if (_vehicle_status_sub.get().nav_state == vehicle_status_s::NAVIGATION_STATE_AUTO_FOLLOW_TARGET
+	    && !found_matching_task) {
+		found_matching_task = true;
 		FlightTaskError error = FlightTaskError::InvalidTask;
 
 #if !defined(CONSTRAINED_FLASH)
@@ -163,25 +164,48 @@ void FlightModeManager::start_flight_task()
 		if (error != FlightTaskError::NoError) {
 			task_failure = true;
 		}
+	}
 
-	} else if (_vehicle_status_sub.get().nav_state == vehicle_status_s::NAVIGATION_STATE_DESCEND) {
+	// Orbit
+	if (_vehicle_status_sub.get().nav_state == vehicle_status_s::NAVIGATION_STATE_ORBIT
+	    && !found_matching_task) {
+		found_matching_task = true;
 
-		// Emergency descend
-		should_disable_task = false;
+		if (!_command_failed) {
+			FlightTaskError error = FlightTaskError::InvalidTask;
 
-		if (switchTask(FlightTaskIndex::Descend) != FlightTaskError::NoError) {
-			task_failure = true;
+#if !defined(CONSTRAINED_FLASH)
+			error = switchTask(FlightTaskIndex::Orbit);
+#endif // !CONSTRAINED_FLASH
+
+			if (error != FlightTaskError::NoError) {
+				task_failure = true;
+			}
 		}
+	}
 
-	} else if (_vehicle_control_mode_sub.get().flag_control_auto_enabled) {
+	// Navigator interface for autonomous modes
+	if (_vehicle_control_mode_sub.get().flag_control_auto_enabled
+	    && !found_matching_task) {
 		// Auto related maneuvers
-		should_disable_task = false;
+		found_matching_task = true;
 
 		if (switchTask(FlightTaskIndex::Auto) != FlightTaskError::NoError) {
 			task_failure = true;
 		}
 
 	}
+
+	if (_vehicle_status_sub.get().nav_state == vehicle_status_s::NAVIGATION_STATE_DESCEND) {
+
+		// Emergency descend
+		found_matching_task = true;
+
+		if (switchTask(FlightTaskIndex::Descend) != FlightTaskError::NoError) {
+			task_failure = true;
+		}
+
+	} else
 
 	// manual position control
 	if (_vehicle_status_sub.get().nav_state == vehicle_status_s::NAVIGATION_STATE_POSCTL || task_failure) {
@@ -229,23 +253,6 @@ void FlightModeManager::start_flight_task()
 		}
 
 		task_failure = error != FlightTaskError::NoError;
-	}
-
-	if (_vehicle_status_sub.get().nav_state == vehicle_status_s::NAVIGATION_STATE_ORBIT) {
-		should_disable_task = false;
-
-		if (!_command_failed) {
-			FlightTaskError error = FlightTaskError::InvalidTask;
-
-#if !defined(CONSTRAINED_FLASH)
-			error = switchTask(FlightTaskIndex::Orbit);
-#endif // !CONSTRAINED_FLASH
-
-			if (error != FlightTaskError::NoError) {
-				task_failure = true;
-			}
-
-		}
 	}
 
 	// check task failure
