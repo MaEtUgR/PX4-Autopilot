@@ -43,6 +43,7 @@ class TestRCUpdate : public RCUpdate
 public:
 	void UpdateManualSwitches(const hrt_abstime &timestamp_sample) { RCUpdate::UpdateManualSwitches(timestamp_sample); }
 	void update_rc_functions() { RCUpdate::update_rc_functions(); }
+	void updateParams() { RCUpdate::updateParams(); }
 	void setChannel(size_t index, float channel_value) { _rc.channels[index] = channel_value; }
 };
 
@@ -62,6 +63,7 @@ public:
 		// GIVEN: First channel is configured as mode switch
 		_param_rc_map_fltmode.set(1);
 		EXPECT_EQ(_param_rc_map_fltmode.get(), 1);
+		_rc_update.updateParams();
 		// GIVEN: First channel has some value
 		_rc_update.setChannel(0, channel_value);
 
@@ -81,6 +83,7 @@ public:
 		// GIVEN: Buttons are configured
 		_param_rc_map_fltm_btn.set(button_configuration);
 		EXPECT_EQ(_param_rc_map_fltm_btn.get(), button_configuration);
+		_rc_update.updateParams();
 		// GIVEN: buttons are mapped
 		_rc_update.update_rc_functions();
 		// GIVEN: First channel has some value

@@ -101,7 +101,6 @@ RCUpdate::RCUpdate() :
 	}
 
 	rc_parameter_map_poll(true /* forced */);
-	parameters_updated();
 
 	_button_pressed_hysteresis.set_hysteresis_time_from(false, 50_ms);
 }
@@ -123,8 +122,10 @@ bool RCUpdate::init()
 	return true;
 }
 
-void RCUpdate::parameters_updated()
+void RCUpdate::updateParams()
 {
+	ModuleParams::updateParams();
+
 	// rc values
 	for (unsigned int i = 0; i < RC_MAX_CHAN_COUNT; i++) {
 		float min = 0.f;
@@ -388,7 +389,6 @@ void RCUpdate::Run()
 
 		// update parameters from storage
 		updateParams();
-		parameters_updated();
 	}
 
 	rc_parameter_map_poll();
@@ -582,6 +582,8 @@ void RCUpdate::UpdateManualSwitches(const hrt_abstime &timestamp_sample)
 {
 	manual_control_switches_s switches{};
 	switches.timestamp_sample = timestamp_sample;
+
+	printf("UpdateManualSwitches %d\n", _param_rc_map_fltmode.get());
 
 	// check mode slot (RC_MAP_FLTMODE)
 	if (_param_rc_map_fltmode.get() > 0) {
