@@ -106,11 +106,34 @@ public:
 		EXPECT_EQ(manual_control_switches_sub.get().mode_slot, expected_slot);
 	}
 
+	void checkReturnSwitch(float channel_value, float threshold, uint8_t expected_position)
+	{
+		// GIVEN: First channel is configured as return switch
+		_param_rc_map_return_sw.set(1);
+		_param_rc_return_th.set(threshold);
+		EXPECT_EQ(_param_rc_map_return_sw.get(), 1);
+		EXPECT_FLOAT_EQ(_param_rc_return_th.get(), threshold);
+		// GIVEN: First channel has some value
+		_rc_update.setChannel(0, channel_value);
+
+		// WHEN: we update the switches two times to pass the simple outlier protection
+		_rc_update.UpdateManualSwitches(0);
+		_rc_update.UpdateManualSwitches(0);
+
+		// THEN: we receive the expected mode slot
+		uORB::SubscriptionData<manual_control_switches_s> manual_control_switches_sub{ORB_ID(manual_control_switches)};
+		manual_control_switches_sub.update();
+
+		EXPECT_EQ(manual_control_switches_sub.get().return_switch, expected_position);
+	}
+
 	TestRCUpdate _rc_update;
 
 	DEFINE_PARAMETERS(
 		(ParamInt<px4::params::RC_MAP_FLTMODE>) _param_rc_map_fltmode,
-		(ParamInt<px4::params::RC_MAP_FLTM_BTN>) _param_rc_map_fltm_btn
+		(ParamInt<px4::params::RC_MAP_FLTM_BTN>) _param_rc_map_fltm_btn,
+		(ParamInt<px4::params::RC_MAP_RETURN_SW>) _param_rc_map_return_sw,
+		(ParamFloat<px4::params::RC_RETURN_TH>) _param_rc_return_th
 	)
 };
 
@@ -155,4 +178,20 @@ TEST_F(RCUpdateTest, ModeSlotButtonAllValues)
 	checkModeSlotButton(31, 5, 1.f, 5); // button 5 pressed -> manual_control_switches_s::MODE_SLOT_5
 	checkModeSlotButton(31, 6, 1.f, 0); // button 6 pressed but not configured -> manual_control_switches_s::MODE_SLOT_NONE
 	checkModeSlotButton(63, 6, 1.f, 6); // button 6 pressed -> manual_control_switches_s::MODE_SLOT_6
+}
+
+TEST_F(RCUpdateTest, ReturnSwitchUnassigned)
+{
+	// GIVEN: Default configuration with no assigned return switch
+	EXPECT_EQ(_param_rc_map_return_sw.get(), 0);
+
+	// WHEN: we update the switches two times to pass the simple outlier protection
+	_rc_update.UpdateManualSwitches(0);
+	_rc_update.UpdateManualSwitches(0);
+
+	// THEN: we receive an unmapped return switch state
+	uORB::SubscriptionData<manual_control_switches_s> manual_control_switches_sub{ORB_ID(manual_control_switches)};
+	manual_control_switches_sub.update();
+
+	EXPECT_EQ(manual_control_switches_sub.get().return_switch, 0); // manual_control_switches_s::MODE_SLOT_NONE
 }
