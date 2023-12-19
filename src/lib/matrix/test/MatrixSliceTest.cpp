@@ -262,3 +262,11 @@ TEST(MatrixSliceTest, Slice)
 	float O_check_data_12 [4] = {2.5, 3, 4, 5};
 	EXPECT_EQ(res_12, (SquareMatrix<float, 2>(O_check_data_12)));
 }
+
+TEST(MatrixSliceTest, XYAssignmentTest)
+{
+	Vector3f lhs(1, 2, 3);
+	Vector3f rhs(4, 5, 6);
+	lhs.xy() = rhs.xy();
+	EXPECT_EQ(lhs, Vector3f(4, 5, 3));
+}
