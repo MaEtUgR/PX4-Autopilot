@@ -44,6 +44,7 @@
 #include "FlightTaskManualAltitudeSmoothVel.hpp"
 #include <uORB/PublicationMulti.hpp>
 #include <uORB/topics/orbit_status.h>
+#include <uORB/topics/goto_setpoint.h>
 #include <lib/slew_rate/SlewRateYaw.hpp>
 #include <lib/motion_planning/PositionSmoothing.hpp>
 #include <lib/motion_planning/VelocitySmoothing.hpp>
@@ -130,6 +131,7 @@ private:
 
 	orb_advert_t _mavlink_log_pub{nullptr};
 	uORB::PublicationMulti<orbit_status_s> _orbit_status_pub{ORB_ID(orbit_status)};
+	uORB::Publication<goto_setpoint_s> _goto_setpoint_pub{ORB_ID(goto_setpoint)};
 
 	DEFINE_PARAMETERS(
 		(ParamFloat<px4::params::MC_ORBIT_RAD_MAX>) _param_mc_orbit_rad_max,

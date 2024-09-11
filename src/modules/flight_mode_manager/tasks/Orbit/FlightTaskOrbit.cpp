@@ -223,20 +223,10 @@ bool FlightTaskOrbit::update()
 		}
 	}
 
-	if (_in_circle_approach) {
-		_generate_circle_approach_setpoints();
-
-	} else {
-		// update altitude
-		ret = ret && FlightTaskManualAltitudeSmoothVel::update();
-
-		// this generates x, y and yaw setpoints
-		_generate_circle_setpoints();
-		_generate_circle_yaw_setpoints();
-	}
-
-	// Apply yaw smoothing
-	_yaw_setpoint = _slew_rate_yaw.update(_yaw_setpoint, _deltatime);
+	goto_setpoint_s goto_setpoint{};
+	_center.copyTo(goto_setpoint.position);
+	goto_setpoint.timestamp = hrt_absolute_time();
+	_goto_setpoint_pub.publish(goto_setpoint);
 
 	// publish information to UI
 	sendTelemetry();
